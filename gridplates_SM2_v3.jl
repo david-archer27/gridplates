@@ -1,21 +1,13 @@
 using SparseArrays
 using LinearAlgebra
-#using CSV
-#using JLD
 using Rotations, SharedArrays
 using Printf
-#using CairoMakie
-#using Makie
 using GLMakie
-#using CairoMakie
-#inline!(true)
+inline!(true)
 using Colors
 using GeometryTypes
 using Contour
 using BSON
-
-
-#using AbstractPlotting
 
 earliesttime = 540.; time_step = 2.; lasttime = 0.
 
@@ -211,7 +203,7 @@ function create_blank_plate(plateID)
     return plate
 end
 function create_orogenic_event(name,onset,finish,altitude)
-    worldfootprint = read_flip_csv(name * ".csv")
+    worldfootprint = read_flip_csv("orogenies/" * name * ".csv")
     #plateIDmap = read_plateIDs(0.)
     #footprints = parse_world_footprint(worldfootprint,plateIDmap)
     orogenic_event = orogenic_event_struct(name,worldfootprint,onset,finish,altitude)
@@ -742,13 +734,13 @@ function aolean_ocean_deposition()
     end
     return
 end
-function seafloor_scour_fraction()
-    if world.freeboard > 0 # land
+function seafloor_scour_fraction( freeboard )
+    if freeboard > 0 # land
         return 1.
-    elseif world.freeboard < -100.
+    elseif freeboard < -100.
         return 0.
     else
-        scour_fraction = ( 100. + world.freeboard ) / 100.
+        scour_fraction = ( 100. + freeboard ) / 100.
     end
     return scour_fraction
 end
@@ -1164,7 +1156,7 @@ function read_plateIDs()
 end
 function read_plateIDs( age )
     integerage = Int(ceil(age))
-    filename = "platefiles/csv_files_1deg/plateIDs." * string(integerage) * ".csv"
+    filename = "platefiles/plateIDs." * string(integerage) * ".csv"
     plateIDmap = read_my_csv(filename)
     return plateIDmap
 end
@@ -1175,7 +1167,7 @@ function read_continentIDs( age )
     #    contIDmap = fill(0,nx,ny)
     #    return contIDmap
     integerage = Int(ceil(age))
-    filename = "contfiles/csv_files_1deg/contIDs." * string(Int(integerage)) * ".csv"
+    filename = "contfiles/contIDs." * string(Int(integerage)) * ".csv"
     contIDmap = read_my_csv(filename)
     return contIDmap
 end
@@ -2600,7 +2592,7 @@ function save_world()
     runname = "SM2"
     timestamp = string(Int(ceil(world.age)))
     # in world grid, only the age field is non-trivial to calculate
-    filename = "outfiles/world/" * runname * ".world." * timestamp * ".bson"
+    filename = "../outfiles/world/" * runname * ".world." * timestamp * ".bson"
     rm(filename, force=true)
     BSON.@save filename world
     return
@@ -2609,7 +2601,7 @@ function read_world(age)
     runname = "SM2"
     timestamp = string(Int(ceil(age)))
     # in world grid, only the age field is non-trivial to calculate
-    filename = "outfiles/world/" * runname * ".world." * timestamp * ".bson"
+    filename = "../outfiles/world/" * runname * ".world." * timestamp * ".bson"
     BSON.@load filename world
     return
 end
@@ -2617,7 +2609,7 @@ function save_plates()
     runname = "SM2"
     timestamp = string(Int(ceil(world.age)))
     # in world grid, only the age field is non-trivial to calculate
-    filename = "outfiles/plates/" * runname * ".plates." * timestamp * ".bson"
+    filename = "../outfiles/plates/" * runname * ".plates." * timestamp * ".bson"
     rm(filename, force=true)
     BSON.@save filename plates
     return
@@ -2625,7 +2617,7 @@ end
 function read_plates(age)
     runname = "SM2"
     timestamp = string(Int(ceil(age)))
-    filename = "outfiles/plates/" * runname * ".plates." * timestamp * ".bson"
+    filename = "../outfiles/plates/" * runname * ".plates." * timestamp * ".bson"
     BSON.@load filename plates
     return
 end
@@ -2646,7 +2638,7 @@ function nearest_scotese_elevation()
         stringage = string(scotese_age)
     end
     #println(stringage)
-    filename = pwd() * "/scotese_elevations/scotese." * stringage * "Ma.nc"
+    filename = pwd() * "../scotese_elevations/scotese." * stringage * "Ma.nc"
     #println(filename)
     field = ncread(filename,"z")
     return field[1:360,1:180], scotese_age
@@ -2655,8 +2647,8 @@ end
 
 
 
-if pwd() != "/Users/archer/Synched/papers/spongeball/work"
-    cd("Synched/papers/spongeball/work")
+if pwd() != "/Users/archer/Synched/papers/spongeball/codebase"
+    cd("Synched/papers/spongeball/codebase")
 end
 rotations = read_rotation_file("1000_0_rotfile_Merdith_et_al.rot")
 norotation = rotation2matrix(rotations[1])
@@ -2701,6 +2693,8 @@ create_everything( earliesttime )
 print(" ")
 println( "Initialization complete" )
 
+println( Threads.nthreads() )
+
 ## big loop
 #LUofAglobal = setup_2d_transport()
 
@@ -2723,7 +2717,7 @@ for age in ages[2:end]
 
     if operation == "movie"  # make movie images
         if age < 535
-            image_number += 1
+            global image_number += 1
             scotese_elevation,scotese_age = nearest_scotese_elevation()
             scene = plot_two_fields(world.freeboard,scotese_elevation,-4000,4000)
             plot_add_plate_boundaries!(scene)
