@@ -19,11 +19,15 @@ function isostacy(crust_thickness,crust_density,sediment_thickness,
     for ix in 1:nx
         for iy in 1:ny
             surface_boundary_mass =
-                crust_thickness[ix,iy] * crust_density[ix,iy] +
-                sediment_thickness[ix,iy] * rho_sediment
+                crust_thickness[ix,iy] * crust_density[ix,iy]
             surface_boundary_thickness =
-                crust_thickness[ix,iy] +
-                sediment_thickness[ix,iy]
+                crust_thickness[ix,iy]
+            for ibin in 1:n_sediment_time_bins
+                surface_boundary_mass +=
+                    sediment_thickness[ix,iy,ibin] * rho_sediment
+                surface_boundary_thickness += 
+                    sediment_thickness[ix,iy,ibin]
+            end
             equivalent_mantle_thickness =
                 surface_boundary_mass /
                 rho_mantle
@@ -115,13 +119,10 @@ function compute_freeboard()
     end
     return
 end
-
-
 # Utilities
 function get_sealevel() # will be replaced by interpolation like for rotations
     return 4714.7
 end
-
 function ocean_area()
     ocean_area = 0.
     for ix in 1:nx

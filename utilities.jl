@@ -9,17 +9,20 @@ function create_world( age )    # no plateIDs or numbers yet
     crust_thickness = fill(0.,nx,ny) # pertaining to geomorphology
     crust_density = fill(0.,nx,ny)
     surface_type = fill(0.,nx,ny)
-    sediment_thickness = fill(1.,nx,ny)
-    sediment_fractions = fill(0.,nx,ny,n_sediment_types)
-    #sediment_fractions[:,:,clay_sediment] .= 1. # initial gets filled from blank plate
+    sediment_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    sediment_fractions = fill(0.,nx,ny,n_sediment_types,
+        n_sediment_time_bins)
     elevation_offset = fill(0.,nx,ny)
     surface_elevation = fill(0.,nx,ny)
     freeboard = fill(0.,nx,ny)
     n_diags = length(world_diag_names); diags = fill(0.,nx,ny,n_diags)
-    n_frac_diags = length(world_frac_diag_names); frac_diags = fill(0.,nx,ny,n_sediment_types,n_frac_diags)
+    n_frac_diags = length(world_frac_diag_names)
+    frac_diags = fill(0.,nx,ny,n_sediment_types,n_frac_diags)
     world = world_struct(age,sealevel,plateIDmap,plateIDlist,crust_type,crust_age,
-        crust_thickness,crust_density,surface_type,sediment_thickness,sediment_fractions,
-        elevation_offset,surface_elevation,freeboard,diags,frac_diags)
+        crust_thickness,crust_density,surface_type,
+        sediment_thickness,sediment_fractions,
+        elevation_offset,surface_elevation,freeboard,
+        diags,frac_diags)
     world.plateID = read_plateIDs( age )
     world.plateIDlist = find_plateID_list( world.plateID )
     continentIDmap = read_continentIDs( age )
@@ -46,12 +49,12 @@ function create_blank_plate(plateID)
     crust_thickness = fill(0.,nx,ny)
     crust_density = fill(0.,nx,ny)
     surface_type = fill(0.,nx,ny)
-    sediment_thickness = fill(0.,nx,ny,n_sediment_layer_time_bins)
-    sediment_fractions = fill(0.,nx,ny,n_sediment_layer_time_bins,length(sediment_type_names))
+    sediment_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    sediment_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
     sediment_thickness[:,:,1] .= 1. # initial meter of CaCO3 contrast with Clay orogenic source
     sediment_fractions[:,:,1,initial_sediment_type] .= initial_sediment_thickness 
     #sediment_thickness[:,:,1] .= 10.
-    #sediment_CaCO3_frac = fill(0.,nx,ny,n_sediment_layer_time_bins)
+    #sediment_CaCO3_frac = fill(0.,nx,ny,n_sediment_time_bins)
     rotationmatrix = fill(0,3,3)
     resolvetime = -1
     parentstack = []
@@ -128,27 +131,28 @@ function apply_sediment_fluxes_to_world( )
     sediment_fraction_deposition_rates = 
         get_frac_diag("seafloor_sediment_fraction_deposition_rate") .+
         get_frac_diag("land_sediment_fraction_deposition_rate")
-    new_sediment_thickness = world.sediment_thickness .+ 
+    new_sediment_thickness = deepcopy(world.sediment_thickness)
+    new_sediment_thickness[:,:,current_time_bin()] .+=
         sediment_deposition_rate .* time_step
     if verbose == true
         println("apply total dep ", volumefield_total(sediment_deposition_rate), 
             " fracs ", volumefield_total(sediment_fraction_deposition_rates[:,:,1]),
             " ", volumefield_total(sediment_fraction_deposition_rates[:,:,2]))
     end
-    new_sediment_fractions = fill(0.,nx,ny,n_sediment_types)
+    new_sediment_fractions = deepcopy(world.sediment_fractions)
     for ix in 1:nx
         for iy in 1:ny
-            #world.crust_thickness[ix,iy] -= crust_erosion_rate[ix,iy] * time_step
-            if new_sediment_thickness[ix,iy] >= 0.
+            if new_sediment_thickness[ix,iy,current_time_bin()] > 0.
                 for i_sedtype in 1:n_sediment_types
-                    old_inventory = world.sediment_thickness[ix,iy] * 
-                        world.sediment_fractions[ix,iy,i_sedtype]
+                    old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
+                        world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
                     new_inventory = old_inventory +
                         sediment_fraction_deposition_rates[ix,iy,i_sedtype] * time_step
-                    new_concentration = new_inventory / new_sediment_thickness[ix,iy]
-                    new_sediment_fractions[ix,iy,i_sedtype] = new_concentration
+                    new_concentration = new_inventory / 
+                        new_sediment_thickness[ix,iy,current_time_bin()]
+                    new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] = 
+                        new_concentration
                 end
-                #world.sediment_thickness[ix,iy] = new_sediment_thickness[ix,iy]
             end
         end
     end
@@ -188,6 +192,28 @@ function increment_world_age()
     world.crust_age .+= time_step
     return
 end
+function top_filled_sediment_box(plate,iplate,jplate)
+    ibinmax = search_sorted_below(sediment_time_bins,world.age)
+    ibinmax = max(ibinmax,1)
+    ibintop = 1
+    for ibin in 2:ibinmax
+        if plate.sediment_thickness[iplate,jplate,ibin] > 0.
+            ibintop = ibin
+        end
+    end
+    return ibintop
+end
+function current_time_bin()
+    ibin = 0
+    for itest in 1:n_sediment_time_bins
+        if sediment_time_bins[itest] >= world.age
+            ibin = itest
+        end
+    end
+    return ibin
+end
+
+
 function ix_left(ix)
     if ix == 1
         ix_l = nx
@@ -423,6 +449,10 @@ function set_frac_diag(varname,sediment_type,field)
     ibin = findfirst(isequal(varname),world_frac_diag_names)
     world.frac_diags[:,:,sediment_type,ibin] = field
 end
+function reset_diag(varname)
+    ibin = findfirst(isequal(varname),world_diag_names)
+    world.diags[:,:,ibin] = fill(0.,nx,ny)
+end
 function reset_frac_diag(varname)
     ibin = findfirst(isequal(varname),world_frac_diag_names)
     world.frac_diags[:,:,:,ibin] .= 0.
@@ -469,19 +499,26 @@ function clear_world_process_arrays()
     return
 end
 function clear_geomorph_process_arrays()
-    for idiag in ["crust_erosion_rate",
-        "aolean_clay_erosion_rate",
-        "aolean_clay_deposition_rate",
-        "land_orogenic_clay_flux",
+    for idiag in [    
+        "continent_orogenic_uplift_rate",   # set in outer time loop, uplift +, meters / Myr
+        "subduction_orogenic_uplift_rate",  
+        "crust_erosion_rate",               # units m/Myr, calc on substep
+        "crust_clay_source_rate",
+        "aolean_clay_erosion_rate", 
+        "aolean_clay_deposition_rate", 
+        "land_orogenic_clay_flux", # in orogeny-neighboring land grid cells
+        "land_CaCO3_dissolution_rate", # subaereal erosion
+        "continental_CaCO3_deposition_rate", # when flooded
         "land_sediment_deposition_rate",
         "seafloor_sediment_deposition_rate",
-        "sediment_deposition_rate",
-        "coastal_orogenic_clay_flux",
+        "sediment_deposition_rate",   
+        "coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
         "coastal_CaCO3_flux",
-        "pelagic_CaCO3_flux",
+        "pelagic_CaCO3_deposition_rate",
+        "seafloor_delta_CO3",
         "surface_type_changes"]
         #println(idiag)
-        set_diag(idiag,fill(0.,nx,ny))
+        reset_diag(idiag)
     end
     world.frac_diags .= 0.
 end
@@ -490,7 +527,7 @@ function global_plate_sediment_inventory()
     for (plateID,plate) in plates
         for ix in 1:nx
             for iy in 1:ny
-                for ibin in 1:n_sediment_layer_time_bins
+                for ibin in 1:n_sediment_time_bins
                     inventory += plate.sediment_thickness[ix,iy,ibin] *
                         areabox[iy]
                 end

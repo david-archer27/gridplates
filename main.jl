@@ -1,3 +1,5 @@
+
+##
 using SparseArrays
 using LinearAlgebra
 using Rotations, SharedArrays, StaticArrays
@@ -15,11 +17,11 @@ include("plates.jl")
 include("orogeny.jl")
 include("land_sed.jl")
 include("ocean_sed.jl")
+include("caco3.jl")
 include("seafloor.jl")
 include("utilities.jl")
 include("io.jl")
 
-earliesttime = 100.; time_step = 2.
 
 if pwd() != "/Users/archer/Synched/papers/spongeball/codebase"
     cd("Synched/papers/spongeball/codebase")
@@ -28,12 +30,14 @@ rotations = read_rotation_file("1000_0_rotfile_Merdith_et_al.rot")
 norotation = rotation2matrix(rotations[1])
 
 orogenic_events = create_orogenies()
-
-create_everything( earliesttime + time_step )
 #
+create_everything( earliesttime + time_step )
+##
 step_everything()
+##
+# partial simple step
 
-## partial simple step
+# stuff in step_everything
 
 world.age -= time_step
 clear_world_process_arrays() 
@@ -58,52 +62,89 @@ remask_plates()
 # initializes plate crust_* variables at new points in plate fields.
 # new continent points on plate grid have h0 thickness
 ocean_thermal_boundary_layer()
-
 clear_geomorph_process_arrays() # only necessary in standalone mode
 # world. files only
 orogeny()
 # continent and subduction uplift rates into *_orogenic_uplift_rate diags
 apply_orogeny_fluxes_to_world()
 isostacy() 
-update_surface_types() 
+check_reburial_exposed_basement() 
+original_elevation_field = land_transport_elevation()
+new_elevation_field = fill(0.,nx,ny)
+ocean_sink = generate_mask_field( world.crust_type, ocean_crust )
+subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
 
-original_elevation_field = fill(0.,nx,ny)
-subaereal_mask = fill(0.,nx,ny); subaereal_mask[2,2:3] .= 1.
-orogenic_source = fill(0.,nx,ny);  orogenic_source[2,2] = 1.
-world.sediment_thickness = fill(0.,nx,ny); world.sediment_thickness[2,2:3] .= 1.
-world.sediment_fractions = fill(0.,nx,ny,2); world.sediment_fractions[2,2:4,2] .= 1.
-set_diag("land_orogenic_clay_flux",orogenic_source)
-ocean_sink = fill(0.,nx,ny);  ocean_sink[2,4] = 1
+# land bulk sediment transport
+n_denuded = -1; n_first = true
 
-new_elevation_field = land_sediment_transport( original_elevation_field, 
-    subaereal_mask, orogenic_source, ocean_sink )
-clay_src_land = volumefield_total(get_diag("land_orogenic_clay_flux"))
-land_tot_deposition = volumefield_total(get_diag("land_sediment_deposition_rate"))
-#get_diag("land_sediment_deposition_rate")[1:3,1:5]
 
+while n_denuded != 0 
+    #elevation_field = land_transport_elevation() # start over each time
+    subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
+    generate_orogenic_erosion_fluxes()
+    # sets land_orogenic_clay_flux, coastal_orogenic_clay_flux,
+    # and crust_erosion_rate.
+    aolean_transport()
+    # resets and fills aolean_deposition_rate and aolean_deposition_rate
+    subaereal_CaCO3_dissolution()
+    # sets land surface CaCO3 dissolution rate 
+    bulk_sediment_source = get_diag("land_orogenic_clay_flux") .- 
+        get_diag("aolean_clay_erosion_rate")# .-
+        #get_diag("land_CaCO3_dissolution_rate") 
+    new_elevation_field = land_bulk_sediment_transport( original_elevation_field, 
+        subaereal_mask, bulk_sediment_source, ocean_sink )
+    # sets land_sediment_deposition_rate, land_sediment_fraction_deposition_rate, 
+    # land_orogenic_clay_flux, coastal_orogenic_clay_flux, crust_erosion_rate.
+    n_denuded = check_subaereal_exposure()
+    # sets world.surface_type to exclude for next pass
+    if n_denuded > 0
+        if n_first == true
+            print("land denuding ",n_denuded)
+            n_first = false
+        else
+            print(", ",n_denuded)
+        end
+    end
+end         
+println("")
+sediment_sources = fill(0.,nx,ny,n_sediment_types)
+sediment_sources[:,:,clay_sediment] .= 
+    get_diag("land_orogenic_clay_flux") .-
+    get_diag("aolean_clay_erosion_rate")
+sediment_sources[:,:,CaCO3_sediment] .= 
+    - get_diag("land_CaCO3_dissolution_rate")
+##
 land_sediment_fraction_transport( new_elevation_field, 
-    subaereal_mask, orogenic_source, ocean_sink ) 
-get_frac_diag("land_sediment_fraction_deposition_rate")[1:3,1:5,1] .+
-get_frac_diag("land_sediment_fraction_deposition_rate")[1:3,1:5,2]
+    subaereal_mask, sediment_sources, ocean_sink ) 
+# updates land_fraction_deposition_rates
 #
+set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink ) 
+# fills coastal_sediment_fraction_runoff_flux
+clay_src_land = volumefield_total(get_diag("land_orogenic_clay_flux"))
 land_clay_deposition = volumefield_total(
     get_frac_diag("land_sediment_fraction_deposition_rate",clay_sediment ))
 land_CaCO3_deposition = volumefield_total(
     get_frac_diag("land_sediment_fraction_deposition_rate",CaCO3_sediment ))
-#
-set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink ) 
 land_clay_runoff = volumefield_total(
     get_frac_diag("coastal_sediment_fraction_runoff_flux",clay_sediment ))
 land_CaCO3_runoff = volumefield_total(
     get_frac_diag("coastal_sediment_fraction_runoff_flux",CaCO3_sediment ))
-println("land tot dep ",land_tot_deposition," clay ",land_clay_deposition,
-    " CaCO3 ",land_CaCO3_deposition)
-println("land clay src ", clay_src_land,
+# land clay mass balance
+println("land clay balance, src ", clay_src_land,
     " dep ", land_clay_deposition," runoff ",land_clay_runoff,
-    " d+r ",land_clay_deposition + land_clay_runoff)
-println("land CaCO3 src ", 0.,
-    " dep ", land_CaCO3_deposition," runoff ",land_CaCO3_runoff,
-    " d+r ",land_CaCO3_deposition + land_CaCO3_runoff)
+    " bal ",land_clay_deposition + land_clay_runoff - clay_src_land )
+# land CaCO3 mass balance
+println("land CaCO3 balance, src ", 0.,
+   " dep ", land_CaCO3_deposition," runoff ",land_CaCO3_runoff,
+   " bal ",land_CaCO3_deposition + land_CaCO3_runoff)
+
+##
+    distribute_CaCO3_sedimentation( )
+    # sets coastal_CaCO3_flux, pelagic_CaCO3_flux
+    distribute_ocean_sediment_fluxes(  )
+    # accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate
+
+
 ##
 
 ##
@@ -125,15 +166,10 @@ CaCO3_runoff_balance = land_CaCO3_runoff - ocn_CaCO3_deposition
 
 ## big loop
 
-lasttime = 720.
-ntimeslices = ( earliesttime - lasttime ) /
-    time_step + 1
 ages = Float32[]
-for i in 1:ntimeslices
-    age = earliesttime - time_step * (i-1)
-    push!(ages,age)   # eg [50 45 40 35 30 25 20 15 10 5 0]
+for age in range(earliesttime,step=-2.,stop=0.)
+    push!(ages,age)
 end
-
 operation = "run"  # "run" or "movie"
 image_number = 0
 for age in ages[2:end]

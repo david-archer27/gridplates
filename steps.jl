@@ -27,8 +27,7 @@ function step_everything() # rebuilds the world at the new time
     # sets world.elevation_offset for aging ocean crust
     step_geomorph() # plugs in here or operates standalone on world grid only
     # updates world.sediment_thickness, returns in isostatic equilibrium
-    apply_crust_changes_to_plates()
-    apply_sediment_fluxes_to_plates()
+    apply_geomorphology_changes_to_plates()
     # updates the plate crust_thickness and sediment_thickness fields
     return
 end
@@ -43,13 +42,11 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     # continent and subduction uplift rates into *_orogenic_uplift_rate diags
     apply_orogeny_fluxes_to_world()
     isostacy() 
-    update_surface_types() 
+    check_reburial_exposed_basement() 
     original_elevation_field = land_transport_elevation()
-    #new_elevation_field = deepcopy( original_elevation_field ) # create a memory space outside loop
-    #subaereal_mask = generate_mask_field(world.surface_type, sedimented_land) # ibid
-    #orogenic_source = get_diag("land_orogenic_clay_flux") # metoo
     ocean_sink = generate_mask_field( world.crust_type, ocean_crust )
-    # land bulk sediment transport block
+
+    # land bulk sediment transport
     n_denuded = -1; n_first = true
     while n_denuded != 0 
         #elevation_field = land_transport_elevation() # start over each time
@@ -57,14 +54,18 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         generate_orogenic_erosion_fluxes()
         # sets land_orogenic_clay_flux, coastal_orogenic_clay_flux,
         # and crust_erosion_rate.
-        orogenic_source = get_diag("land_orogenic_clay_flux") # m / Myr
-        new_elevation_field = land_sediment_transport( original_elevation_field, 
-            subaereal_mask, orogenic_source, ocean_sink )
-        # sets land_sediment_deposition_rate, land_sediment_fraction_deposition_rate, 
-        # land_orogenic_clay_flux, coastal_orogenic_clay_flux, crust_erosion_rate.
         aolean_transport()
         # resets and fills aolean_deposition_rate and aolean_deposition_rate
-        n_denuded = check_subaereal_exposure()
+        subaereal_CaCO3_dissolution()
+        # sets land surface CaCO3 dissolution rate 
+        bulk_sediment_source = get_diag("land_orogenic_clay_flux") .- 
+            get_diag("aolean_clay_erosion_rate") .-
+            get_diag("land_CaCO3_dissolution_rate") 
+        new_elevation_field = land_bulk_sediment_transport( original_elevation_field, 
+            subaereal_mask, bulk_sediment_source, ocean_sink )
+        # sets land_sediment_deposition_rate, land_sediment_fraction_deposition_rate, 
+        # land_orogenic_clay_flux, coastal_orogenic_clay_flux, crust_erosion_rate.
+        n_denuded, new_total_sediment_thickness = check_subaereal_exposure()
         # sets world.surface_type to exclude for next pass
         if n_denuded > 0
             if n_first == true
@@ -85,8 +86,16 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         end
     end         
     println("")
+    sediment_sources = fill(0.,nx,ny,n_sediment_types)
+    sediment_sources[:,:,clay_sediment] .= 
+        get_diag("land_orogenic_clay_flux") .-
+        get_diag("aolean_clay_erosion_rate")
+    sediment_sources[:,:,CaCO3_sediment] .= 
+        - get_diag("land_CaCO3_dissolution_rate")
+    
     land_sediment_fraction_transport( new_elevation_field, 
-        subaereal_mask, orogenic_source, ocean_sink ) 
+        new_total_sediment_thickness,
+        subaereal_mask, sediment_sources, ocean_sink ) 
     # updates land_fraction_deposition_rates
 
     #=if verbose == true
@@ -116,13 +125,15 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         # land clay mass balance
         println("land clay balance, src ", clay_src_land,
             " dep ", land_clay_deposition," runoff ",land_clay_runoff,
-            " d+r-s ",land_clay_deposition + land_clay_runoff - clay_src_land )
+            " bal ",land_clay_deposition + land_clay_runoff - clay_src_land )
         # land CaCO3 mass balance
         println("land CaCO3 balance, src ", 0.,
            " dep ", land_CaCO3_deposition," runoff ",land_CaCO3_runoff,
-           " d+r ",land_CaCO3_deposition + land_CaCO3_runoff)
+           " bal ",land_CaCO3_deposition + land_CaCO3_runoff)
     end
 
+    distribute_CaCO3_sedimentation( )
+    # sets coastal_CaCO3_flux, pelagic_CaCO3_flux
     distribute_ocean_sediment_fluxes(  )
     # accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate
 
@@ -144,6 +155,13 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     end
 
     world.sediment_thickness, world.sediment_fractions = apply_sediment_fluxes_to_world()
+    set_diag("sediment_deposition_rate", 
+        get_diag("land_sediment_deposition_rate") .+ 
+        get_diag("land_sediment_deposition_rate") )
+    for ibin in 1:n_sediment_time_bins
+        accum_diag("total_sediment_thickness",
+            world.sediment_thickness[:,:,ibin])
+    end
     isostacy()
 
     return

@@ -138,8 +138,8 @@ function generate_orogenic_erosion_fluxes()
     # doesnt need to accumulate since there will be no overlap of orogenic areas.
     # uses exposed_basement
     verbose = false
-    set_diag("land_orogenic_clay_flux",fill(0.,nx,ny))
-    set_diag("coastal_orogenic_clay_flux",fill(0.,nx,ny))
+    reset_diag("land_orogenic_clay_flux")
+    reset_diag("coastal_orogenic_clay_flux")
     orogenic_crust_mask = generate_mask_field( world.surface_type,exposed_basement ) .*
         generate_mask_field( world.crust_type,continent_crust )
     orogenic_blobs = get_blobs( orogenic_crust_mask )
@@ -204,6 +204,7 @@ function get_integrated_orogenic_production_rates( orogenic_blobs ) # m3 sedimen
     # fills crust_erosion_rate and crust_clay_source_rate, 
     # returns blob-integrated rates in an array[nblobs]
     n_orogenies = length(orogenic_blobs)
+    total_sediment_thickness = get_diag("total_sediment_thickness")
     area_rates = []
     for i_area = 1:n_orogenies
         crust_erosion_field = fill(0.,nx,ny)
@@ -213,11 +214,11 @@ function get_integrated_orogenic_production_rates( orogenic_blobs ) # m3 sedimen
                     crust_erosion_rate = orogenic_erosion_rate(world.freeboard[ix,iy]) # meters / Myr
                     crust_erosion_field[ix,iy] = crust_erosion_rate
 
-                    if world.sediment_thickness[ix,iy] > 0. # presumably recently exposed, leftover
+                    if total_sediment_thickness[ix,iy] > 0. # presumably recently exposed, leftover
                         # pays off negative sediment debt if any
-                        sediment_source_rate = world.sediment_thickness[ix,iy] / 
+                        sediment_source_rate = total_sediment_thickness[ix,iy] / 
                             time_step # meters / Myr
-                        world.sediment_thickness[ix,iy] = 0.
+                        world.sediment_thickness[ix,iy,:] .= 0.
                         # turned this off because its already getting there thru dispersion of erosion
                         #= for i_sedfrac in 1:n_sediment_types
                             fraction = world.sediment_fractions[ix,iy,i_sedfrac]

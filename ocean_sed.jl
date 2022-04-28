@@ -1,3 +1,4 @@
+
 function distribute_ocean_sediment_fluxes(  )
     # accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate.
     # smoothes the sediment deposition fluxes, tests for sediment overflows,
@@ -18,11 +19,11 @@ function distribute_ocean_sediment_fluxes(  )
     set_frac_diag( "ocean_sediment_fraction_influx",
         clay_sediment, clay_dep )
     CaCO3_dep = get_diag("coastal_CaCO3_flux") .+  # CaCO3 fluxes
-        get_diag("pelagic_CaCO3_flux") .+ 
+        get_diag("pelagic_CaCO3_deposition_rate") .+ 
+        get_diag("continental_CaCO3_deposition_rate") .+ 
         get_frac_diag("coastal_sediment_fraction_runoff_flux",CaCO3_sediment)
     set_frac_diag( "ocean_sediment_fraction_influx",
         CaCO3_sediment, CaCO3_dep )
-    total_dep = clay_dep .+ CaCO3_dep
     sed_fluxes = fill(0.,nx,ny,n_sediment_types+1)
     sed_fluxes[:,:,1] = clay_dep
     sed_fluxes[:,:,2] = CaCO3_dep
@@ -30,7 +31,7 @@ function distribute_ocean_sediment_fluxes(  )
     submarine_mask = greater_than_mask_field(world.freeboard .* -1, 0.)
 
     smooth_sediment_fraction_deposition_rate!( sed_fluxes, submarine_mask )
-    # alters sed_fluxes, smoothing them out
+    # alters sed_fluxes, smoothing the array only
     incoming_flux = volumefield_total( sed_fluxes[:,:,n_sediment_types+1] )
 
     overflow_fluxes, n_overflows = check_sediment_overflows!( sed_fluxes, submarine_mask )
@@ -41,18 +42,18 @@ function distribute_ocean_sediment_fluxes(  )
         deposited_flux = volumefield_total( get_diag("seafloor_sediment_deposition_rate") )
         overflow_flux = volumefield_total( overflow_fluxes[:,:,n_sediment_types+1] )
         println("  ocean in ", incoming_flux," dep ", deposited_flux, " overflow ", 
-            overflow_flux, " d+o ", deposited_flux+overflow_flux )
+            overflow_flux, " bal ", incoming_flux-deposited_flux+overflow_flux )
     end
     while n_overflows > 0
         smooth_sediment_fraction_deposition_rate!( overflow_fluxes, submarine_mask )
-        smoothed_overflow_flux = volumefield_total( overflow_fluxes[:,:,n_sediment_types+1] )
+        #smoothed_overflow_flux = volumefield_total( overflow_fluxes[:,:,n_sediment_types+1] )
         overflow_fluxes, n_overflows = check_sediment_overflows!( overflow_fluxes, submarine_mask )
         if verbose == true
             deposited_flux = volumefield_total( get_diag("seafloor_sediment_deposition_rate") )
             overflow_flux = volumefield_total( overflow_fluxes[:,:,n_sediment_types+1] )
             #println("redo after overflows, now ", n_overflows)
             println("R ocean in ", incoming_flux," dep ", deposited_flux, " overflow ", 
-                overflow_flux, " d+o ", deposited_flux+overflow_flux )
+                overflow_flux, " bal ", incoming_flux-deposited_flux+overflow_flux )
         end
     end
 end
@@ -215,7 +216,7 @@ function check_sediment_overflows!( sed_fluxes, submarine_mask )
                             for pair in border_neighbor_coords
                                 ixn = pair[1]; iyn = pair[2]
                                 n_boxes = length(border_neighbor_coords)
-                                println("dumping into ",n_boxes," neighbors")
+                                #println("dumping into ",n_boxes," neighbors")
                                 coastal_overflow_fluxes[ix,iy,n_sediment_types+1] += 
                                     volume / n_boxes / areabox[iyn]
                                 for i_sedtype in 1:n_sediment_types                                
@@ -240,15 +241,8 @@ function check_sediment_overflows!( sed_fluxes, submarine_mask )
         end
     end
 
-    
-    #accum_diag("seafloor_sediment_deposition_rate", sed_fluxes[:,:,n_sediment_types+1])
-    #for i_sedtype in 1:n_sediment_types
-    #    accum_frac_diag("seafloor_sediment_fraction_deposition_rate", 
-    #        i_sedtype,sed_fluxes[:,:,i_sedtype])
-    #end
-
     if n_trapped > 0 # prepare for another pass 
-        println("trigger another pass overflows ",n_overflows," trapped ", n_trapped)
+        #println(" ocean overflows ",n_overflows," trapped ", n_trapped)
         redistribute_ocean_overflow_fluxes!( coastal_overflow_fluxes, 
             trapped_overflow_fluxes, submarine_mask )
     end
