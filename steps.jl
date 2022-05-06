@@ -2,7 +2,10 @@
 # Meta steps
 function step_everything() # rebuilds the world at the new time
     world.age -= time_step
+    println("beginning ", world.age, " Myr ", get_geo_interval())
+
     clear_world_process_arrays() 
+    println("interpolating from plate grids")
     resolve_rotation_matrices()
     # set rotation matrices to the new time
     increment_plate_age()
@@ -26,15 +29,16 @@ function step_everything() # rebuilds the world at the new time
     ocean_thermal_boundary_layer()
     # sets world.elevation_offset for aging ocean crust
     step_geomorph() # plugs in here or operates standalone on world grid only
-    # updates world.sediment_thickness, returns in isostatic equilibrium
+    # updates world.sediment_thickness and layers, returns in isostatic equilibrium
     apply_geomorphology_changes_to_plates()
     # updates the plate crust_thickness and sediment_thickness fields
     return
 end
 function step_geomorph() # requires previous run with tectonics to fill world diag arrays
     local new_elevation_field, subaereal_mask, orogenic_source, 
-    crust_clay_source, clay_src_land,land_tot_deposition,land_clay_deposition,
-    land_CaCO3_deposition, land_clay_runoff,land_CaCO3_runoff
+        crust_clay_source, clay_src_land,land_tot_deposition,land_clay_deposition,
+        land_CaCO3_deposition, land_clay_runoff,land_CaCO3_runoff,
+        new_total_sediment_thickness
     verbose = true
     clear_geomorph_process_arrays() # only necessary in standalone mode
     # world. files only
@@ -42,6 +46,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     # continent and subduction uplift rates into *_orogenic_uplift_rate diags
     apply_orogeny_fluxes_to_world()
     isostacy() 
+    print("land")
     check_reburial_exposed_basement() 
     original_elevation_field = land_transport_elevation()
     ocean_sink = generate_mask_field( world.crust_type, ocean_crust )
@@ -65,11 +70,11 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             subaereal_mask, bulk_sediment_source, ocean_sink )
         # sets land_sediment_deposition_rate, land_sediment_fraction_deposition_rate, 
         # land_orogenic_clay_flux, coastal_orogenic_clay_flux, crust_erosion_rate.
-        n_denuded, new_total_sediment_thickness = check_subaereal_exposure()
+        n_denuded = check_subaereal_exposure()
         # sets world.surface_type to exclude for next pass
         if n_denuded > 0
             if n_first == true
-                print("land denuding ",n_denuded)
+                print(" denuding ",n_denuded)
                 n_first = false
             else
                 print(", ",n_denuded)
@@ -94,7 +99,6 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         - get_diag("land_CaCO3_dissolution_rate")
     
     land_sediment_fraction_transport( new_elevation_field, 
-        new_total_sediment_thickness,
         subaereal_mask, sediment_sources, ocean_sink ) 
     # updates land_fraction_deposition_rates
 
@@ -125,7 +129,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         # land clay mass balance
         println("land clay balance, src ", clay_src_land,
             " dep ", land_clay_deposition," runoff ",land_clay_runoff,
-            " bal ",land_clay_deposition + land_clay_runoff - clay_src_land )
+            " bal ", clay_src_land - land_clay_deposition - land_clay_runoff )
         # land CaCO3 mass balance
         println("land CaCO3 balance, src ", 0.,
            " dep ", land_CaCO3_deposition," runoff ",land_CaCO3_runoff,
@@ -154,14 +158,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             " bal ", CaCO3_influx - ocn_CaCO3_dep )
     end
 
-    world.sediment_thickness, world.sediment_fractions = apply_sediment_fluxes_to_world()
+    world.sediment_thickness, world.sediment_surface_fractions = 
+        apply_land_sediment_fluxes()
+    apply_ocean_sediment_fluxes( )
     set_diag("sediment_deposition_rate", 
         get_diag("land_sediment_deposition_rate") .+ 
         get_diag("land_sediment_deposition_rate") )
-    for ibin in 1:n_sediment_time_bins
-        accum_diag("total_sediment_thickness",
-            world.sediment_thickness[:,:,ibin])
-    end
     isostacy()
 
     return

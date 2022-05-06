@@ -14,8 +14,10 @@ mutable struct plate_struct
     crust_thickness
     crust_density
     surface_type
-    sediment_thickness  # geologic record, dimensions of x,y,time_bin
-    sediment_fractions  # x, y, sed type, time_bin
+    sediment_thickness  # geologic record, dimensions of x,y
+    sediment_surface_fractions # x,y,sed type 
+    sediment_layer_thickness # x,y,time_bins, not used on land points
+    sediment_layer_fractions  # x, y, sed type, time_bin
     rotationmatrix  # 3x3 heirarchy-resolved rotation matrix
     resolvetime
     parentstack     # list of parents at last resolve time
@@ -41,8 +43,10 @@ mutable struct world_struct
     crust_thickness # pertaining to geomorphology
     crust_density
     surface_type    # for sediment transport, subaereal or submarine
-    sediment_thickness  # nx,ny,n_sediment_time_bins
-    sediment_fractions  # nx,ny,n_sediment_types,n_sediment_time_bins
+    sediment_thickness  # geologic record, dimensions of x,y
+    sediment_surface_fractions # x,y,sed type 
+    sediment_layer_thickness # x,y,time_bins, not used on land points
+    sediment_layer_fractions  # x, y, sed type, time_bin
     elevation_offset
     surface_elevation
     freeboard  # end of 9 state variables
@@ -74,7 +78,6 @@ world_diag_names = ["ocean_created_plate_area",
     "land_sediment_deposition_rate",
     "seafloor_sediment_deposition_rate",
     "sediment_deposition_rate",
-    "total_sediment_thickness",   
     "coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
     "coastal_CaCO3_flux",
     "pelagic_CaCO3_deposition_rate",
@@ -125,7 +128,6 @@ n_sediment_types = length(sediment_type_names)
 initial_sediment_type = clay_sediment; initial_sediment_thickness = 1.
 
 # time 
-
 earliesttime = 150.
 time_step = 2. # Myr
 sediment_record_resolution = 10.

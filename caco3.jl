@@ -1,11 +1,12 @@
 function distribute_CaCO3_sedimentation( )
-    local ocean_CO3
+    local ocean_CO3, total_deposition
     terrestrial_CaCO3_dissolution = volumefield_total(
         get_diag("land_CaCO3_dissolution_rate") ) # m3 / Myr
     silicate_weathering_CaCO3_rate =
         global_CO2_degassing_rate * # mol / yr
         100. * 1.e6 / rho_sediment / 1.e6 # m3 / Myr
-    target_deposition = terrestrial_CaCO3_dissolution + silicate_weathering_CaCO3_rate
+    target_deposition = 1.e15 # today fluxes
+    #silicate_weathering_CaCO3_rate # + terrestrial_CaCO3_dissolution
     
     # ground truth stuff for diagnostics
     # from Cartapanis 2018
@@ -47,12 +48,10 @@ function distribute_CaCO3_sedimentation( )
             ocean_CO3_low = ocean_CO3; depo_low = total_deposition
         end
         imbalance = abs( total_deposition - target_deposition )
+
     end
-    println("ocean CO3 ",ocean_CO3,
-        #" coastal ",coastal_CaCO3_deposition,
-        #" pelagic ", pelagic_CaCO3_deposition,
-        #" continental_CaCO3_deposition ",continental_CaCO3_deposition,
-        " iter ",n_iters, " bal ", imbalance)
+    println("CaCO3 iters ", n_iters, " tot ", total_deposition, 
+    " CO3 ",ocean_CO3," bal ",imbalance)
     set_diag("coastal_CaCO3_flux", 
         get_coastal_CaCO3_deposition_field( ocean_CO3 ) )
     set_diag("pelagic_CaCO3_deposition_rate", 
@@ -69,11 +68,16 @@ function get_total_CaCO3_deposition_rate( ocean_CO3 )
         get_continental_CaCO3_deposition_field( ocean_CO3 ) )
     total_deposition = coastal_CaCO3_deposition + 
         pelagic_CaCO3_deposition + continental_CaCO3_deposition
+    #imbalance = abs( total_deposition - target_deposition )
+    #println("ocean CO3 ",ocean_CO3,
+    #    " coastal ",coastal_CaCO3_deposition,
+    #    " pelagic ", pelagic_CaCO3_deposition,
+    #    " continental ",continental_CaCO3_deposition)
     return total_deposition
 end
 function get_continental_CaCO3_deposition_field( ocean_CO3 ) 
     shallow_rates = fill(0.,nx,ny)
-    for ix in 1:nx
+    #= for ix in 1:nx
         for iy in 1:ny
             if world.crust_type[ix,iy] == continent_crust
                 if world.freeboard[ix,iy] < shelf_depth_CaCO3
@@ -83,7 +87,7 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
                 end
             end
         end
-    end
+    end =#
     return shallow_rates
 end
 function get_pelagic_CaCO3_deposition_field( ocean_CO3 )
@@ -153,10 +157,10 @@ function subaereal_CaCO3_dissolution()
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] > land_CaCO3_dissolving_altitude
-                diss_rate = world.sediment_fractions[ix,iy,CaCO3_sediment,current_time_bin()] *
+                diss_rate = world.sediment_surface_fractions[ix,iy,CaCO3_sediment] *
                     land_CaCO3_dissolution_rate # meters/Myr
-                available_caco3 =  world.sediment_thickness[ix,iy,current_time_bin()] * 
-                    world.sediment_fractions[ix,iy,CaCO3_sediment,current_time_bin()]
+                available_caco3 =  world.sediment_thickness[ix,iy] * 
+                    world.sediment_surface_fractions[ix,iy,CaCO3_sediment]
                 diss_rate = min( diss_rate, available_caco3 )
                 set_diag("land_CaCO3_dissolution_rate",ix,iy,diss_rate)
             end

@@ -204,7 +204,7 @@ function get_integrated_orogenic_production_rates( orogenic_blobs ) # m3 sedimen
     # fills crust_erosion_rate and crust_clay_source_rate, 
     # returns blob-integrated rates in an array[nblobs]
     n_orogenies = length(orogenic_blobs)
-    total_sediment_thickness = get_diag("total_sediment_thickness")
+    total_sediment_thickness = world.sediment_thickness
     area_rates = []
     for i_area = 1:n_orogenies
         crust_erosion_field = fill(0.,nx,ny)
@@ -218,7 +218,8 @@ function get_integrated_orogenic_production_rates( orogenic_blobs ) # m3 sedimen
                         # pays off negative sediment debt if any
                         sediment_source_rate = total_sediment_thickness[ix,iy] / 
                             time_step # meters / Myr
-                        world.sediment_thickness[ix,iy,:] .= 0.
+                        world.sediment_thickness[ix,iy] = 0.
+                        world.sediment_layer_thickness[ix,iy,:] .= 0.
                         # turned this off because its already getting there thru dispersion of erosion
                         #= for i_sedfrac in 1:n_sediment_types
                             fraction = world.sediment_fractions[ix,iy,i_sedfrac]

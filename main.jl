@@ -10,7 +10,7 @@ using Colors
 using GeometryTypes
 using Contour
 using BSON
-
+#
 include("params.jl")
 include("steps.jl")
 include("plates.jl")
@@ -18,10 +18,9 @@ include("orogeny.jl")
 include("land_sed.jl")
 include("ocean_sed.jl")
 include("caco3.jl")
-include("seafloor.jl")
+include("isostacy.jl")
 include("utilities.jl")
 include("io.jl")
-
 
 if pwd() != "/Users/archer/Synched/papers/spongeball/codebase"
     cd("Synched/papers/spongeball/codebase")
@@ -32,8 +31,13 @@ norotation = rotation2matrix(rotations[1])
 orogenic_events = create_orogenies()
 #
 create_everything( earliesttime + time_step )
-##
-step_everything()
+#
+#world = read_world(132.)
+#plates = read_plates(132.)
+#
+#for i in 1:10
+#    step_everything()
+#end
 ##
 # partial simple step
 
@@ -68,6 +72,7 @@ orogeny()
 # continent and subduction uplift rates into *_orogenic_uplift_rate diags
 apply_orogeny_fluxes_to_world()
 isostacy() 
+print("land")
 check_reburial_exposed_basement() 
 original_elevation_field = land_transport_elevation()
 new_elevation_field = fill(0.,nx,ny)
@@ -76,7 +81,6 @@ subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
 
 # land bulk sediment transport
 n_denuded = -1; n_first = true
-
 
 while n_denuded != 0 
     #elevation_field = land_transport_elevation() # start over each time
@@ -99,7 +103,7 @@ while n_denuded != 0
     # sets world.surface_type to exclude for next pass
     if n_denuded > 0
         if n_first == true
-            print("land denuding ",n_denuded)
+            print(" denuding ",n_denuded)
             n_first = false
         else
             print(", ",n_denuded)
@@ -115,6 +119,7 @@ sediment_sources[:,:,CaCO3_sediment] .=
     - get_diag("land_CaCO3_dissolution_rate")
 ##
 land_sediment_fraction_transport( new_elevation_field, 
+    #new_total_sediment_thickness,
     subaereal_mask, sediment_sources, ocean_sink ) 
 # updates land_fraction_deposition_rates
 #
@@ -167,19 +172,20 @@ CaCO3_runoff_balance = land_CaCO3_runoff - ocn_CaCO3_deposition
 ## big loop
 
 ages = Float32[]
-for age in range(earliesttime,step=-2.,stop=0.)
+for age in range(earliesttime,step=-2.,stop=130.)
     push!(ages,age)
 end
 operation = "run"  # "run" or "movie"
 image_number = 0
 for age in ages[2:end]
-    println(world.age, " ", get_geo_interval())
+    println()
 
     if operation == "run"
         step_everything()
         if true == true
             save_world()
-            if floor(age/25) == age/25 && true == true
+            if floor(age/5) == age/5 && true == true
+                println("saving output bson files. ")
                 save_plates()
             end
         end
@@ -208,8 +214,8 @@ for age in ages[2:end]
         #println(age," ",scotese_age, " ",get_geo_interval(age))
     end
 
-    if true == true  # watch movie on screen
-        scene = plotfield(world.freeboard,-5000,5000)
+    if true == false  # watch movie on screen
+        scene = plotfield(world.sediment_fractions[:,:,current_time_bin(),1],0,1)
         display(scene)
         #println(highest_xy_field(world.freeboard))
     end

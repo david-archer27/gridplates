@@ -88,6 +88,7 @@ function save_world()
     # in world grid, only the age field is non-trivial to calculate
     filename = "../outfiles/world/" * runname * ".world." * timestamp * ".bson"
     rm(filename, force=true)
+    println("saving ", filename)
     BSON.@save filename world
     return
 end
@@ -105,6 +106,7 @@ function save_plates()
     # in world grid, only the age field is non-trivial to calculate
     filename = "../outfiles/plates/" * runname * ".plates." * timestamp * ".bson"
     rm(filename, force=true)
+    println("saving ", filename)
     BSON.@save filename plates
     return
 end

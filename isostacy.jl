@@ -19,15 +19,11 @@ function isostacy(crust_thickness,crust_density,sediment_thickness,
     for ix in 1:nx
         for iy in 1:ny
             surface_boundary_mass =
-                crust_thickness[ix,iy] * crust_density[ix,iy]
+                crust_thickness[ix,iy] * crust_density[ix,iy] +
+                sediment_thickness[ix,iy] * rho_sediment
             surface_boundary_thickness =
-                crust_thickness[ix,iy]
-            for ibin in 1:n_sediment_time_bins
-                surface_boundary_mass +=
-                    sediment_thickness[ix,iy,ibin] * rho_sediment
-                surface_boundary_thickness += 
-                    sediment_thickness[ix,iy,ibin]
-            end
+                crust_thickness[ix,iy] + 
+                sediment_thickness[ix,iy]
             equivalent_mantle_thickness =
                 surface_boundary_mass /
                 rho_mantle

@@ -9,8 +9,7 @@ function land_bulk_sediment_transport( original_elevation_field, subaereal_mask,
     subaereal_blobs = get_blobs( subaereal_mask )
     altered_elevation_field = deepcopy( original_elevation_field )
     verbose = false
-    #Threads.@threads 
-    for i_blob in 1:length(subaereal_blobs) 
+    Threads.@threads for i_blob in 1:length(subaereal_blobs) 
         #if verbose == true
         #    println("beginning ",i_blob)
         #end
@@ -161,8 +160,7 @@ function check_subaereal_exposure()
     n_failed = 0
     sediment_deposition_meters = 
         get_diag("land_sediment_deposition_rate") .* time_step
-    total_sediment_thickness = 
-        get_diag("total_sediment_thickness")
+    total_sediment_thickness = world.sediment_thickness
     new_total_sediment_thickness = total_sediment_thickness .+ 
         sediment_deposition_meters 
     for ix in 1:nx
@@ -178,33 +176,66 @@ function check_subaereal_exposure()
             end
         end
     end
-    return n_failed, new_total_sediment_thickness 
+    return n_failed  # , new_total_sediment_thickness 
 end
 function land_sediment_fraction_transport( new_elevation_field, 
-    new_total_sediment_thickness, subaereal_mask, 
+    subaereal_mask, 
     sediment_sources, ocean_sink )
     # sets land_sediment_fraction_deposition_rate on land areas
     subaereal_blobs = get_blobs( subaereal_mask )
  
-    #Threads.@threads
+    #Threads.@threads 
     for i_blob in 1:length(subaereal_blobs) 
         #println("beginning ",i_blob)
         subaereal_blob = subaereal_blobs[i_blob]
         land_area_sediment_fraction_transport( 
-            new_elevation_field, new_total_sediment_thickness,
+            new_elevation_field, 
             subaereal_blob, sediment_sources, ocean_sink ) 
         # sets land_sediment_fraction_deposition_rate on land points
+        #println("i_blob ",i_blob," ",
+        #    volumefield_total(get_frac_diag("land_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment,1]))
     end 
 end
 function land_area_sediment_fraction_transport( 
-    new_elevation_field, new_total_sediment_thickness,
+    new_elevation_field, 
     subaereal_blob, sediment_sources, ocean_sink ) 
     # sets land_sediment_fraction_deposition_rate on land points
     # fractions combined in one call so they can share the 
     # transportation matrix
-    #old_total_sediment_thickness = get_diag("total_sediment_thickness")
+
+    # basic equation for influx point.  prime denotes end-of-step state.
+    # concentrations are averaged over entire sediment column. 
+    # Inv1' = Inv1 + D1 ( E2' - E1' ) * ( C1' + C2' ) / 2 + Src1
+    #                -- mass flux ---   ---- avg conc ---
+    # adjacent coastal (sink) point
+    # Inv2' = Inv2 + D2 ( E1' - E2') * (C1' + C2')/2 - D1 E2' C2'
+
+    # rearrange to deal in inventories 
+    # conc for transport is averaged over entire depth 
+    # C = Inv(column)/H(column)
+    # Inv1' = Inv1 + D1 ( E2' - E1' ) * ( Inv1'/H1' + Inv2'/H2' ) / 2 + Src1
+    # Inv2' = Inv2 + D2 ( E1' - E2' ) * ( Inv1'/H1' + Inv2'/H2' ) / 2 - D1 E2' Inv2' / H2'
+
+    # group unknown end-step Inv terms 
+    # Inv1' * [1 - D1 (E2'-E1')/(2 H1')] + Inv2' * [  - D1 (E2'-E1')/(2 H2')                ] = Inv1 + Src1
+    # Inv1' * [  - D2 (E1'-E2')/(2 H1')] + Inv2' * [1 - D2 (E1'-E2')/(2 H2') + D1 E2' / H2' ] = Inv2
+
+    # matrix form
+    #| 1 - D1 (E2'-E1') / (2 H1'),   - D1 (E2'-E1') / (2 H2')                | | Inv1' |      | Inv1 + Src |
+    #|   - D2 (E1'-E2') / (2 H1'), 1 - D2 (E1'-E2') / (2 H2') + D1 E2' / H2' | | Inv2' |  =   | Inv2       |
+
     sediment_deposition_meters = 
         get_diag("land_sediment_deposition_rate") .* time_step
+    old_total_sediment_thickness = world.sediment_thickness
+    new_total_sediment_thickness = old_total_sediment_thickness .+
+        sediment_deposition_meters
+    old_column_fraction_inventory = fill(0.,nx,ny,n_sediment_types)
+    for i_sedtype in 1:n_sediment_types
+        old_column_fraction_inventory[:,:,i_sedtype] = 
+            world.sediment_thickness .*
+            world.sediment_surface_fractions[:,:,i_sedtype]
+    end
+
     list_pos = fill(0,nx,ny)
     list_pos_filled = 0
     list_x = []; list_y = []
@@ -226,27 +257,27 @@ function land_area_sediment_fraction_transport(
         v_diffcoeffs = get_vertical_diffcoeff(land_base_diffcoeff,iy)
         if ocean_sink[ix_left(ix),iy] == 1 
             A += h_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
         end
         if ocean_sink[ix_right(ix),iy] == 1 
             A += h_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
         end
         if iy > 1
             if ocean_sink[ix,iy-1] == 1
                 A += v_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end
         end
         if iy < ny
             if ocean_sink[ix,iy+1] == 1
                 A += v_diffcoeffs[1] * 
-                new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end
         end
         for i_sedtype in 1:n_sediment_types
 
-            old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
+            #=  old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
                     world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
             remaining_meters = - (
                 sediment_deposition_meters[ix,iy] +
@@ -263,13 +294,13 @@ function land_area_sediment_fraction_transport(
                     old_inventory += world.sediment_thickness[ix,iy,i_bin] * 
                         world.sediment_fractions[ix,iy,i_sedtype,i_bin]
                 end
-            end
-
+            end =#
+            old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
             R = old_inventory + 
                 sediment_sources[ix,iy,i_sedtype] * time_step
             new_inventory = A \ R   
-            new_fraction = new_inventory / 
-                new_sediment_thickness[ix,iy]
+            #new_fraction = new_inventory / 
+            #    new_total_sediment_thickness[ix,iy]
             fraction_deposition_rate = 
                 ( new_inventory - old_inventory ) / 
                 time_step
@@ -285,52 +316,36 @@ function land_area_sediment_fraction_transport(
             v_diffcoeffs = get_vertical_diffcoeff(land_base_diffcoeff,iy)
             # up (toward positive) = 1, down = 2
 
-            # basic equation for influx point.  prime denotes end-of-step state
-            # Inv1' = Inv1 + D1 ( E2' - E1' ) * ( C1' + C2' ) / 2 + Src1
-            # adjacent coastal (sink) point
-            # Inv2' = Inv2 + D2 ( E1' - E2') * (C1' + C2')/2 - D1 E2' C2'
-            # expanded to deal in inventories
-            # H, new_sediment_thickness, comes from outside
-            # C = Inv/H
-            # Inv1' = Inv1 + D1 ( E2' - E1' ) * ( Inv1'/H1' + Inv2'/H2' ) / 2 + Src1
-            # Inv2' = Inv2 + D2 ( E1' - E2' ) * ( Inv1'/H1' + Inv2'/H2' ) / 2 - D1 E2' Inv2' / H2'
-            # rearrange
-            # Inv1' * [1 - D1 (E2'-E1')/(2 H1')] + Inv2' * [  - D1 (E2'-E1')/(2 H2')                ] = Inv1 + Src1
-            # Inv1' * [  - D2 (E1'-E2')/(2 H1')] + Inv2' * [1 - D2 (E1'-E2')/(2 H2') + D1 E2' / H2' ] = Inv2
-            # matrix form
-            #| 1 - D1 (E2'-E1') / (2 H1'),   - D1 (E2'-E1') / (2 H2')                | | Inv1' |      | Inv1 + Src |
-            #|   - D2 (E1'-E2') / (2 H1'), 1 - D2 (E1'-E2') / (2 H2') + D1 E2' / H2' | | Inv2' |  =   | Inv2       |
-
             A[i_pos,i_pos] = 1.
             if subaereal_blob[ix_left(ix),iy] == 1 
                 A[i_pos,i_pos] -= h_diffcoeffs[2] * # diffusion to negative direction
                     ( new_elevation_field[ix_left(ix),iy] - new_elevation_field[ix,iy] ) / 
-                    2 / new_sediment_thickness[ix,iy]
+                    2 / new_total_sediment_thickness[ix,iy]
                 i_neighbor_pos = list_pos[ix_left(ix),iy]
                 if i_neighbor_pos == 0
                     println("ix ",ix_left(ix)," iy ",iy)
                 end
                 A[i_pos,i_neighbor_pos] -= h_diffcoeffs[2] * 
                     ( new_elevation_field[ix_left(ix),iy] - new_elevation_field[ix,iy] ) /  
-                    2 / new_sediment_thickness[ix_left(ix),iy]
+                    2 / new_total_sediment_thickness[ix_left(ix),iy]
             elseif ocean_sink[ix_left(ix),iy] == 1 
                 A[i_pos,i_pos] += h_diffcoeffs[2] * 
-                    new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end
             if subaereal_blob[ix_right(ix),iy] == 1 
                 A[i_pos,i_pos] -= h_diffcoeffs[1] * 
                     ( new_elevation_field[ix_right(ix),iy] - new_elevation_field[ix,iy] ) /  
-                    2 / new_sediment_thickness[ix,iy]
+                    2 / new_total_sediment_thickness[ix,iy]
                 i_neighbor_pos = list_pos[ix_right(ix),iy]
                 if i_neighbor_pos == 0
                     println("ix ",ix_right(ix)," iy ",iy)
                 end
                 A[i_pos,i_neighbor_pos] -= h_diffcoeffs[1] * 
                     ( new_elevation_field[ix_right(ix),iy] - new_elevation_field[ix,iy] ) /  
-                    2 / new_sediment_thickness[ix_right(ix),iy]
+                    2 / new_total_sediment_thickness[ix_right(ix),iy]
             elseif ocean_sink[ix_right(ix),iy] == 1 
                 A[i_pos,i_pos] += h_diffcoeffs[1] * 
-                    new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end   
             if iy == 1 
                 #= tie things across the pole 
@@ -348,17 +363,17 @@ function land_area_sediment_fraction_transport(
                 if subaereal_blob[ix,iy-1] == 1 
                     A[i_pos,i_pos] -= v_diffcoeffs[2] * # index 2 is toward -ve in iy
                         ( new_elevation_field[ix,iy-1] - new_elevation_field[ix,iy] ) /  
-                        2 / new_sediment_thickness[ix,iy]
+                        2 / new_total_sediment_thickness[ix,iy]
                     i_neighbor_pos = list_pos[ix,iy-1]
                     if i_neighbor_pos == 0
                         println("ix ",ix," iy ",iy-1)
                     end
                     A[i_pos,i_neighbor_pos] -= v_diffcoeffs[2] * 
                         ( new_elevation_field[ix,iy-1] - new_elevation_field[ix,iy] ) /  
-                        2 / new_sediment_thickness[ix,iy-1]
+                        2 / new_total_sediment_thickness[ix,iy-1]
                 elseif ocean_sink[ix,iy-1] == 1 
                     A[i_pos,i_pos] += v_diffcoeffs[2] * 
-                        new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                        new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
                 end    
             end        
             if iy == ny  
@@ -377,17 +392,17 @@ function land_area_sediment_fraction_transport(
                 if subaereal_blob[ix,iy+1] == 1 
                     A[i_pos,i_pos] -= v_diffcoeffs[1] * 
                         ( new_elevation_field[ix,iy+1] - new_elevation_field[ix,iy] ) /  
-                        2 / new_sediment_thickness[ix,iy]
+                        2 / new_total_sediment_thickness[ix,iy]
                     i_neighbor_pos = list_pos[ix,iy+1]
                     if i_neighbor_pos == 0
                         println("ix ",ix," iy ",iy+1)
                     end
                     A[i_pos,i_neighbor_pos] -= v_diffcoeffs[1] * 
                         ( new_elevation_field[ix,iy+1] - new_elevation_field[ix,iy] ) /  
-                        2 / new_sediment_thickness[ix,iy+1]
+                        2 / new_total_sediment_thickness[ix,iy+1]
                 elseif ocean_sink[ix,iy+1] == 1 
                     A[i_pos,i_pos] += v_diffcoeffs[1] * 
-                        new_elevation_field[ix,iy] / new_sediment_thickness[ix,iy]
+                        new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
                 end
             end                
         end # create A
@@ -400,7 +415,7 @@ function land_area_sediment_fraction_transport(
             for i_pos = 1:list_pos_filled
                 ix = list_x[i_pos]; iy = list_y[i_pos]
 
-                old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
+                #= old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
                     world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
                 remaining_meters = - (
                     sediment_deposition_meters[ix,iy] +
@@ -417,19 +432,19 @@ function land_area_sediment_fraction_transport(
                         old_inventory += world.sediment_thickness[ix,iy,i_bin] * 
                             world.sediment_fractions[ix,iy,i_sedtype,i_bin]
                     end
-                end
-            
+                end =#
+                old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
                 push!(old_inventory_list,old_inventory)
                 push!(R, old_inventory + 
                     sediment_sources[ix,iy,i_sedtype] * time_step )
             end
             new_inventory_list = lu_A \ R
-            new_fraction_field = fill(0.,nx,ny)
+            #new_fraction_field = fill(0.,nx,ny)
             for i_pos = 1:list_pos_filled
                 ix = list_x[i_pos]; iy = list_y[i_pos]
-                new_fraction = new_inventory_list[i_pos] / 
-                    new_sediment_thickness[ix,iy]
-                new_fraction_field[ix,iy] = new_fraction
+                #new_fraction = new_inventory_list[i_pos] / 
+                #    new_total_layer_sediment_thickness[ix,iy]
+                #new_fraction_field[ix,iy] = new_fraction
                 fraction_deposition_rate = 
                     ( new_inventory_list[i_pos] - old_inventory_list[i_pos] ) / 
                     time_step
@@ -447,7 +462,8 @@ end
 function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink )    
     # resets and fills coastal_sediment_fraction_runoff_flux
     reset_frac_diag("coastal_sediment_fraction_runoff_flux")
-    new_sediment_thickness, new_sediment_fractions = apply_sediment_fluxes_to_world( ) 
+    new_sediment_thickness, new_sediment_fractions = apply_land_sediment_fluxes( ) 
+    # we want to get a preview without altering the real world 
 
     # basic equation for adjacent coastal (sink) point
     # H2' = H2 + D2 ( E1' - E2') + D1 ( 0 - E2' ) 
@@ -563,7 +579,7 @@ function check_reburial_exposed_basement()
         end
     end
     if n_buried > 0
-        println("  burying ",n_buried)
+        print(" burying ",n_buried)
     end
     return n_buried
 end

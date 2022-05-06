@@ -9,8 +9,10 @@ function create_world( age )    # no plateIDs or numbers yet
     crust_thickness = fill(0.,nx,ny) # pertaining to geomorphology
     crust_density = fill(0.,nx,ny)
     surface_type = fill(0.,nx,ny)
-    sediment_thickness = fill(0.,nx,ny,n_sediment_time_bins)
-    sediment_fractions = fill(0.,nx,ny,n_sediment_types,
+    sediment_thickness = fill(0.,nx,ny)
+    sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,
         n_sediment_time_bins)
     elevation_offset = fill(0.,nx,ny)
     surface_elevation = fill(0.,nx,ny)
@@ -20,7 +22,8 @@ function create_world( age )    # no plateIDs or numbers yet
     frac_diags = fill(0.,nx,ny,n_sediment_types,n_frac_diags)
     world = world_struct(age,sealevel,plateIDmap,plateIDlist,crust_type,crust_age,
         crust_thickness,crust_density,surface_type,
-        sediment_thickness,sediment_fractions,
+        sediment_thickness,sediment_surface_fractions,
+        sediment_layer_thickness,sediment_layer_fractions,
         elevation_offset,surface_elevation,freeboard,
         diags,frac_diags)
     world.plateID = read_plateIDs( age )
@@ -49,10 +52,14 @@ function create_blank_plate(plateID)
     crust_thickness = fill(0.,nx,ny)
     crust_density = fill(0.,nx,ny)
     surface_type = fill(0.,nx,ny)
-    sediment_thickness = fill(0.,nx,ny,n_sediment_time_bins)
-    sediment_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
-    sediment_thickness[:,:,1] .= 1. # initial meter of CaCO3 contrast with Clay orogenic source
-    sediment_fractions[:,:,1,initial_sediment_type] .= initial_sediment_thickness 
+    sediment_thickness = fill(1.,nx,ny)
+    sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    sediment_surface_fractions[:,:,initial_sediment_type] .= 1.
+    sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
+    sediment_layer_thickness[:,:,1] .= 1.0
+     # initial meter of CaCO3 contrast with Clay orogenic source
+    sediment_layer_fractions[:,:,1,initial_sediment_type] .= 1.0
     #sediment_thickness[:,:,1] .= 10.
     #sediment_CaCO3_frac = fill(0.,nx,ny,n_sediment_time_bins)
     rotationmatrix = fill(0,3,3)
@@ -63,7 +70,8 @@ function create_blank_plate(plateID)
     lastappearance = -1
     plate = plate_struct(plateID,crust_type,crust_age,
         crust_thickness,crust_density,surface_type,
-        sediment_thickness,sediment_fractions,
+        sediment_thickness,sediment_surface_fractions,
+        sediment_layer_thickness,sediment_layer_fractions,
         rotationmatrix,resolvetime,
         parentstack,lastparentstack,
         firstappearance,lastappearance)
@@ -99,7 +107,6 @@ function create_everything( age )
     return
 end
 
-
 # Global Utilities
 function apply_orogeny_fluxes_to_world()
     # applies continent_orogenic_uplift_rate and subduction_orogenic_uplift_rate
@@ -124,39 +131,82 @@ function apply_crust_weathering_fluxes_to_world()
         end
     end
 end
-function apply_sediment_fluxes_to_world( )
-    verbose = false
-    sediment_deposition_rate = get_diag("seafloor_sediment_deposition_rate") .+
-        get_diag("land_sediment_deposition_rate")
+function apply_land_sediment_fluxes( )
+    # the sediments on land are unresolved in time, stored in 2d arrays
+    # called provisionally by set_land_runoff_fluxes, then again at the
+    # end of the step.  hence returning fields to be applied, rather than
+    # altering world.sediment_thickness and world.sediment_surface_fractions
+    sediment_deposition_rate = get_diag("land_sediment_deposition_rate")
     sediment_fraction_deposition_rates = 
-        get_frac_diag("seafloor_sediment_fraction_deposition_rate") .+
         get_frac_diag("land_sediment_fraction_deposition_rate")
-    new_sediment_thickness = deepcopy(world.sediment_thickness)
-    new_sediment_thickness[:,:,current_time_bin()] .+=
+    new_sediment_thickness = deepcopy(world.sediment_thickness) .+
         sediment_deposition_rate .* time_step
-    if verbose == true
-        println("apply total dep ", volumefield_total(sediment_deposition_rate), 
-            " fracs ", volumefield_total(sediment_fraction_deposition_rates[:,:,1]),
-            " ", volumefield_total(sediment_fraction_deposition_rates[:,:,2]))
-    end
-    new_sediment_fractions = deepcopy(world.sediment_fractions)
+    new_sediment_fractions = deepcopy(world.sediment_surface_fractions)
     for ix in 1:nx
         for iy in 1:ny
-            if new_sediment_thickness[ix,iy,current_time_bin()] > 0.
+            if new_sediment_thickness[ix,iy] > 0.
                 for i_sedtype in 1:n_sediment_types
-                    old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
-                        world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
+                    old_inventory = world.sediment_thickness[ix,iy] * 
+                        world.sediment_surface_fractions[ix,iy,i_sedtype]
                     new_inventory = old_inventory +
                         sediment_fraction_deposition_rates[ix,iy,i_sedtype] * time_step
                     new_concentration = new_inventory / 
-                        new_sediment_thickness[ix,iy,current_time_bin()]
-                    new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] = 
+                        new_sediment_thickness[ix,iy]
+                    new_sediment_fractions[ix,iy,i_sedtype] = 
                         new_concentration
                 end
             end
         end
     end
     return new_sediment_thickness, new_sediment_fractions
+end
+function apply_ocean_sediment_fluxes( )
+    # the sediment record is stored time-resolved on ocean points in 
+    # sediment_layer_thickness and sediment_layer_fractions, as well 
+    # as the total thickness in world.sediment_thickness and 
+    # the surface values into world.sediment_surface_fractions
+    # this is only called once, at the end of the step, so there is
+    # no need to externalize dealing with world.* variables
+    verbose = false
+    total_sediment_deposition_rate = get_diag("seafloor_sediment_deposition_rate")
+    sediment_fraction_deposition_rates = 
+        get_frac_diag("seafloor_sediment_fraction_deposition_rate")
+    new_sediment_thickness = deepcopy(world.sediment_thickness)
+    new_sediment_layer_thickness = deepcopy(world.sediment_layer_thickness)
+
+    new_sediment_thickness[:,:] .+=
+        total_sediment_deposition_rate .* time_step
+    new_sediment_layer_thickness[:,:,current_time_bin()] .+=
+        total_sediment_deposition_rate .* time_step
+    if verbose == true
+        println("apply total dep ", volumefield_total(sediment_deposition_rate), 
+            " fracs ", volumefield_total(sediment_fraction_deposition_rates[:,:,1]),
+            " ", volumefield_total(sediment_fraction_deposition_rates[:,:,2]))
+    end
+
+    new_sediment_layer_fractions = deepcopy(world.sediment_layer_fractions)
+    for ix in 1:nx
+        for iy in 1:ny
+            if new_sediment_thickness[ix,iy,current_time_bin()] > 0.
+                for i_sedtype in 1:n_sediment_types
+                    old_inventory = world.sediment_layer_thickness[ix,iy,current_time_bin()] * 
+                        world.sediment_layer_fractions[ix,iy,i_sedtype,current_time_bin()]
+                    new_inventory = old_inventory +
+                        sediment_fraction_deposition_rates[ix,iy,i_sedtype] * time_step
+                    new_concentration = new_inventory / 
+                        new_sediment_layer_thickness[ix,iy,current_time_bin()]
+                    new_sediment_layer_fractions[ix,iy,i_sedtype,current_time_bin()] = 
+                        new_concentration
+                    world.sediment_surface_fractions[ix,iy,i_sedtype] = 
+                        new_concentration
+                end
+            end
+        end
+    end
+
+    world.sediment_thickness = new_sediment_thickness
+    world.sediment_layer_thickness = new_sediment_layer_thickness
+    return new_sediment_layer_thickness, new_sediment_layer_fractions
 end
 function update_world_continents_from_file()    # continents
     world.plateID = read_plateIDs()
