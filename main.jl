@@ -1,5 +1,5 @@
+#
 
-##
 using SparseArrays
 using LinearAlgebra
 using Rotations, SharedArrays, StaticArrays
@@ -35,9 +35,24 @@ create_everything( earliesttime + time_step )
 #world = read_world(132.)
 #plates = read_plates(132.)
 #
-#for i in 1:10
-#    step_everything()
-#end
+#old_sed_inv = global_world_sediment_inventory()
+for i in 1:2
+    step_everything()
+    scene = plotfield(world.sediment_surface_fractions[:,:,2] .* 100.,0.,100.)
+    plot_add_continent_outlines!(scene)
+    plot_add_orogenies!(scene)
+    display(scene)
+    #total_sed_inv = global_world_sediment_inventory()
+    #clay_src_land = volumefield_total(get_diag("land_orogenic_clay_flux"))
+    #CaCO3_src = volumefield_total(
+    #    get_frac_diag("ocean_sediment_fraction_influx",CaCO3_sediment))
+    #balance = total_sed_inv - old_sed_inv - clay_src_land - CaCO3_src
+
+    #println("total sed inv ", total_sed, " clay ",clay_src_land," CaCO3 ", CaCO3_src,
+    #    " bal ", balance)
+    #old_sed_inv = total_sed_inv
+    #get_diag("land_sediment_deposition_rate")[333:337,145:149]
+end
 ##
 # partial simple step
 
@@ -66,6 +81,7 @@ remask_plates()
 # initializes plate crust_* variables at new points in plate fields.
 # new continent points on plate grid have h0 thickness
 ocean_thermal_boundary_layer()
+
 clear_geomorph_process_arrays() # only necessary in standalone mode
 # world. files only
 orogeny()
@@ -77,14 +93,42 @@ check_reburial_exposed_basement()
 original_elevation_field = land_transport_elevation()
 new_elevation_field = fill(0.,nx,ny)
 ocean_sink = generate_mask_field( world.crust_type, ocean_crust )
-subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
 
+subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
+#subaereal_mask[:,1] .= 0; subaereal_mask[:,ny] .= 0
 # land bulk sediment transport
 n_denuded = -1; n_first = true
+
+#=
+ocean_sink = fill(0.,nx,ny); ocean_sink[2,4] = 1
+subaereal_mask = fill(0,nx,ny); subaereal_mask[2,2:3] .= 1
+bulk_sediment_source = fill(0.,nx,ny); bulk_sediment_source[2,2] = 1.
+original_elevation_field = fill(0.,nx,ny); original_elevation_field[2,2:3] .= 1.
+new_elevation_field = land_bulk_sediment_transport( original_elevation_field, 
+    subaereal_mask, bulk_sediment_source, ocean_sink )
+#
+sediment_sources = fill(0.,nx,ny,n_sediment_types)
+sediment_sources[2,2,1] = 1.
+land_sediment_fraction_transport( new_elevation_field, 
+    subaereal_mask, sediment_sources, ocean_sink ) 
+world.sediment_thickness, world.sediment_surface_fractions = 
+    apply_land_sediment_fluxes()
+
+original_elevation_field = deepcopy(new_elevation_field)
+new_elevation_field = land_bulk_sediment_transport( original_elevation_field, 
+    subaereal_mask, bulk_sediment_source, ocean_sink )
+land_sediment_fraction_transport( new_elevation_field, 
+    subaereal_mask, sediment_sources, ocean_sink ) 
+world.sediment_thickness, world.sediment_surface_fractions = 
+    apply_land_sediment_fluxes()
+
+println(world.sediment_surface_fractions[2,1:4,2])
+=#
 
 while n_denuded != 0 
     #elevation_field = land_transport_elevation() # start over each time
     subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
+    #subaereal_mask[:,1] .= 0; subaereal_mask[:,ny] .= 0
     generate_orogenic_erosion_fluxes()
     # sets land_orogenic_clay_flux, coastal_orogenic_clay_flux,
     # and crust_erosion_rate.
@@ -117,17 +161,42 @@ sediment_sources[:,:,clay_sediment] .=
     get_diag("aolean_clay_erosion_rate")
 sediment_sources[:,:,CaCO3_sediment] .= 
     - get_diag("land_CaCO3_dissolution_rate")
-##
+
+#subaereal_blobs = get_blobs( subaereal_mask )
+#
+#subaereal_blob = subaereal_blobs[1]
+#world.sediment_thickness .= 1.
+#world.sediment_surface_fractions[:,:,1] .= 1.
+#world.sediment_surface_fractions[:,:,2] .= 0.
+#subaereal_blob[1:120,:] .= 0#; subaereal_blob[300:360,:] .= 0
+#subaereal_blob[:,1:4] .= 0
+#land_area_sediment_fraction_transport( 
+#    new_elevation_field, 
+#    subaereal_blob, sediment_sources, ocean_sink ) 
+#println(get_frac_diag("land_sediment_fraction_deposition_rate")[180,10:15,1])
+#
+#plotfield(get_diag("land_sediment_deposition_rate")[:,:])
+
+#
 land_sediment_fraction_transport( new_elevation_field, 
     #new_total_sediment_thickness,
     subaereal_mask, sediment_sources, ocean_sink ) 
-# updates land_fraction_deposition_rates
+world.sediment_thickness, world.sediment_surface_fractions = 
+    apply_land_sediment_fluxes()
+#
+
+    # updates land_fraction_deposition_rates
 #
 set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink ) 
+land_CaCO3_dep = get_frac_diag("land_sediment_fraction_deposition_rate",CaCO3_sediment )
+
+
+
+
 # fills coastal_sediment_fraction_runoff_flux
 clay_src_land = volumefield_total(get_diag("land_orogenic_clay_flux"))
 land_clay_deposition = volumefield_total(
-    get_frac_diag("land_sediment_fraction_deposition_rate",clay_sediment ))
+    land_CaCO3_dep)
 land_CaCO3_deposition = volumefield_total(
     get_frac_diag("land_sediment_fraction_deposition_rate",CaCO3_sediment ))
 land_clay_runoff = volumefield_total(
@@ -142,12 +211,43 @@ println("land clay balance, src ", clay_src_land,
 println("land CaCO3 balance, src ", 0.,
    " dep ", land_CaCO3_deposition," runoff ",land_CaCO3_runoff,
    " bal ",land_CaCO3_deposition + land_CaCO3_runoff)
+#
 
-##
-    distribute_CaCO3_sedimentation( )
-    # sets coastal_CaCO3_flux, pelagic_CaCO3_flux
-    distribute_ocean_sediment_fluxes(  )
-    # accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate
+distribute_CaCO3_sedimentation( )
+#
+# sets coastal_CaCO3_flux, pelagic_CaCO3_flux
+distribute_ocean_sediment_fluxes(  )
+# accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate
+#
+world.sediment_thickness, world.sediment_surface_fractions = 
+    apply_land_sediment_fluxes()
+
+apply_ocean_sediment_fluxes( )
+ 
+set_diag("global_sediment_deposition_rate", 
+    get_diag("land_sediment_deposition_rate") .+ 
+    get_diag("land_sediment_deposition_rate") )
+for i_sedtype in 1:n_sediment_types
+    set_frac_diag("global_sediment_fraction_deposition_rate",i_sedtype,
+        get_frac_diag("land_sediment_fraction_deposition_rate",i_sedtype) .+
+        get_frac_diag("seafloor_sediment_fraction_deposition_rate",i_sedtype) )
+end
+for ix in 1:nx
+    for iy in 1:ny
+        if get_diag("global_sediment_deposition_rate")[ix,iy] != 0.
+            for i_sedtype in 1:n_sediment_types
+                set_frac_diag("global_sediment_fraction_deposition_ratio",ix,iy,i_sedtype,
+                    get_frac_diag("global_sediment_fraction_deposition_rate",i_sedtype)[ix,iy] /
+                    get_diag("global_sediment_deposition_rate")[ix,iy])
+            end
+        end
+    end
+end
+#scene = plotfield(world.sediment_surface_fractions[:,:,2] .* 100.)
+#plot_add_continent_outlines!(scene)
+
+land_dep = get_diag("land_sediment_deposition_rate")[180:184,103:108]
+land_C_dep = get_frac_diag("land_sediment_fraction_deposition_rate")[180:184,103:108,1]
 
 
 ##

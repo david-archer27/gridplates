@@ -385,8 +385,15 @@ function remask_plate!(plate)
                         world.surface_type[iworld,jworld]
                     if plate.crust_type[iplate,jplate] == ocean_crust
                         plate.crust_density[iplate,jplate] = rho_ocean_crust
+                        plate.sediment_thickness[iplate,jplate] = 0.
+                        plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
+                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
+                        plate.sediment_layer_fractions[iplate,jplate,:,:] .= 0.
                     else
                         plate.crust_density[iplate,jplate] = rho_continent_crust
+                        plate.sediment_thickness[iplate,jplate] = initial_sediment_thickness
+                        plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
+                        plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
                     end
                 else
                     delete_plate_point!(plate,iplate,jplate)
@@ -402,6 +409,10 @@ function remask_plate!(plate)
                         plate.crust_type[iplate,jplate] = ocean_crust
                         plate.crust_thickness[iplate,jplate] = ocean_crust_h0
                         plate.crust_density[iplate,jplate] = rho_ocean_crust
+                        plate.sediment_thickness[iplate,jplate] = 0.
+                        plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
+                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
+                        plate.sediment_layer_fractions[iplate,jplate,:,:] .= 0.
                     elseif plate.crust_type[iplate,jplate] == continent_crust
                         record_flux_into_world_diags("continent_2_ocean_plate_area",
                             jplate,iworld,jworld)
@@ -409,6 +420,9 @@ function remask_plate!(plate)
                         plate.crust_type[iplate,jplate] = ocean_crust
                         plate.crust_thickness[iplate,jplate] = ocean_crust_h0
                         plate.crust_density[iplate,jplate] = rho_ocean_crust
+                        plate.sediment_thickness[iplate,jplate] = initial_sediment_thickness
+                        plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
+                        plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
                     end
                 else # world.crust_type[iworld,jworld] == continent_crust
                     if plate.crust_type[iplate,jplate] == notatsurface
@@ -430,6 +444,9 @@ function remask_plate!(plate)
                             continent_crust_h0
                         plate.crust_density[iplate,jplate] = rho_continent_crust
                     end
+                    plate.sediment_thickness[iplate,jplate] = initial_sediment_thickness
+                    plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
+                    plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
                 end # updated the status of the plate grid point if required
             else       # world map says we dont exist here
                 if plate.crust_type[iplate,jplate] == ocean_crust

@@ -1,8 +1,15 @@
 
 # Meta steps
 function step_everything() # rebuilds the world at the new time
+    verbose = true
+    local old_plate_inventories
     world.age -= time_step
+    println()
     println("beginning ", world.age, " Myr ", get_geo_interval())
+
+    if verbose == true
+        println("going in ",  global_plate_sediment_inventories())
+    end
 
     clear_world_process_arrays() 
     println("interpolating from plate grids")
@@ -11,6 +18,10 @@ function step_everything() # rebuilds the world at the new time
     increment_plate_age()
     # ocean and cont crust gets older in plate grids
     update_changing_plateIDs()
+    if verbose == true
+        old_plate_inventories = global_plate_sediment_inventories()
+        println("updated ", old_plate_inventories)
+    end
     # look for plates that change their identities, move stuff between them
     # requires old plateID list but new age in world.plateID
     # updates world.plateID
@@ -26,19 +37,56 @@ function step_everything() # rebuilds the world at the new time
     # records plate subduction and creation in world diags.
     # initializes plate crust_* variables at new points in plate fields.
     # new continent points on plate grid have h0 thickness
+    if verbose == true
+        subducted_fractions = []
+        for i_sedtype in 1:n_sediment_types
+            push!(subducted_fractions, volumefield_total(
+                get_frac_diag("ocean_subduct_sediment_fraction_volume")[:,:,i_sedtype]))
+        end
+        new_plate_inventories = global_plate_sediment_inventories()
+        balances = new_plate_inventories .- old_plate_inventories .+ 
+            ( subducted_fractions .* time_step )
+        println("remask ",  global_plate_sediment_inventories()," subd ",subducted_fractions,
+            " bal ", balances )
+    end
+
     ocean_thermal_boundary_layer()
     # sets world.elevation_offset for aging ocean crust
     step_geomorph() # plugs in here or operates standalone on world grid only
     # updates world.sediment_thickness and layers, returns in isostatic equilibrium
+
+    if verbose == true
+        old_plate_inventories = global_plate_sediment_inventories()
+        println("stepped ", old_plate_inventories)
+    end
+
     apply_geomorphology_changes_to_plates()
     # updates the plate crust_thickness and sediment_thickness fields
-    return
+
+    if verbose == true
+        new_plate_inventories = global_plate_sediment_inventories()
+        change_rates = ( new_plate_inventories .- old_plate_inventories ) ./
+            time_step
+        deposition_rates = []
+        for i_sedtype in 1:n_sediment_types
+            push!(deposition_rates, volumefield_total(get_frac_diag("global_sediment_fraction_deposition_rate",
+                i_sedtype)))
+        end
+        balances = change_rates .- deposition_rates
+        println("plate budgets ", old_plate_inventories," to ",new_plate_inventories,
+            " bal ", balances)
+    end
+
 end
+
 function step_geomorph() # requires previous run with tectonics to fill world diag arrays
-    local new_elevation_field, subaereal_mask, orogenic_source, 
-        crust_clay_source, clay_src_land,land_tot_deposition,land_clay_deposition,
+
+    local new_elevation_field, subaereal_mask, 
+        #crust_clay_source, land_tot_deposition,
+        clay_src_land,land_clay_deposition,
         land_CaCO3_deposition, land_clay_runoff,land_CaCO3_runoff,
-        new_total_sediment_thickness
+        old_land_clay_inventory, old_ocean_sed_inventories
+
     verbose = true
     clear_geomorph_process_arrays() # only necessary in standalone mode
     # world. files only
@@ -56,6 +104,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     while n_denuded != 0 
         #elevation_field = land_transport_elevation() # start over each time
         subaereal_mask = generate_mask_field(world.surface_type, sedimented_land)
+        subaereal_mask[:,1] .= 0; subaereal_mask[:,ny] .= 0
         generate_orogenic_erosion_fluxes()
         # sets land_orogenic_clay_flux, coastal_orogenic_clay_flux,
         # and crust_erosion_rate.
@@ -143,12 +192,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     if verbose == true
         # ocean clay balance
-        clay_influx = volumefield_total(
+        ocn_clay_influx = volumefield_total(
             get_frac_diag("ocean_sediment_fraction_influx",clay_sediment))
         ocn_clay_dep = volumefield_total(get_frac_diag(
             "seafloor_sediment_fraction_deposition_rate",clay_sediment ))
-        println("clay ocean balance, in ", clay_influx," dep ",ocn_clay_dep,
-            " bal ", clay_influx - ocn_clay_dep )
+        println("clay ocean balance, in ", ocn_clay_influx," dep ",ocn_clay_dep,
+            " bal ", ocn_clay_influx - ocn_clay_dep )
         # CaCO3 balance
         CaCO3_influx = volumefield_total(
             get_frac_diag("ocean_sediment_fraction_influx",CaCO3_sediment))
@@ -158,12 +207,80 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             " bal ", CaCO3_influx - ocn_CaCO3_dep )
     end
 
+    if verbose == true
+        old_land_clay_inventory = volumefield_total(
+            world.sediment_thickness .* 
+            world.sediment_surface_fractions[:,:,clay_sediment] )
+    end
+
     world.sediment_thickness, world.sediment_surface_fractions = 
         apply_land_sediment_fluxes()
+    # leaves the actual substitution to passback so it could be applied provisionally
+    # in iteration
+
+    if verbose == true # testing land sedimentation
+        new_land_clay_inventory = volumefield_total(
+            world.sediment_thickness .* 
+            world.sediment_surface_fractions[:,:,clay_sediment] )
+        change_rate = ( new_land_clay_inventory - old_land_clay_inventory ) /
+            time_step
+        balance = change_rate - land_clay_deposition
+        println("land clay accum ", old_land_clay_inventory, " to ", new_land_clay_inventory,
+           " chg ", change_rate," bal ", balance)
+    end
+
+    if verbose == true
+        old_ocean_sed_inventories = []
+        for i_sedtype in 1:n_sediment_types
+            push!(old_ocean_sed_inventories, volumefield_total(
+                world.sediment_layer_thickness[:,:,current_time_bin()] .* 
+                world.sediment_layer_fractions[:,:,i_sedtype,current_time_bin()] ) )
+        end 
+    end
+
     apply_ocean_sediment_fluxes( )
-    set_diag("sediment_deposition_rate", 
+    # updates world.sediment* for ocean points from seafloor_sediment*_deposition_rate
+    set_diag("global_sediment_deposition_rate", 
         get_diag("land_sediment_deposition_rate") .+ 
         get_diag("land_sediment_deposition_rate") )
+    for i_sedtype in 1:n_sediment_types
+        set_frac_diag("global_sediment_fraction_deposition_rate",i_sedtype,
+            get_frac_diag("land_sediment_fraction_deposition_rate",i_sedtype) .+
+            get_frac_diag("seafloor_sediment_fraction_deposition_rate",i_sedtype) )
+    end
+    for ix in 1:nx
+        for iy in 1:ny
+            if get_diag("global_sediment_deposition_rate")[ix,iy] != 0.
+                for i_sedtype in 1:n_sediment_types
+                    set_frac_diag("global_sediment_fraction_deposition_ratio",ix,iy,i_sedtype,
+                        get_frac_diag("global_sediment_fraction_deposition_rate",i_sedtype)[ix,iy] /
+                        get_diag("global_sediment_deposition_rate")[ix,iy])
+                end
+            end
+        end
+    end
+
+    if verbose == true
+        new_ocean_sed_inventories = []
+        inventory_changes = 
+        ocean_sed_depo_rates = []
+        balances = []
+        for i_sedtype in 1:n_sediment_types
+            push!(new_ocean_sed_inventories, volumefield_total(
+                world.sediment_layer_thickness[:,:,current_time_bin()] .* 
+                world.sediment_layer_fractions[:,:,i_sedtype,current_time_bin()] ) )
+            push!(ocean_sed_depo_rates,volumefield_total(
+                get_frac_diag("seafloor_sediment_fraction_deposition_rate",i_sedtype)))
+        end 
+        inventory_changes = ( new_ocean_sed_inventories .- old_ocean_sed_inventories) ./
+            time_step
+        balances = inventory_changes -
+            ocean_sed_depo_rates 
+        println("ocean accum ", old_ocean_sed_inventories," to ",
+            new_ocean_sed_inventories, 
+            " bal ", balances)
+    end                    
+
     isostacy()
 
     return

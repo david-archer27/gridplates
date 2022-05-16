@@ -207,7 +207,7 @@ function land_area_sediment_fraction_transport(
     # concentrations are averaged over entire sediment column. 
     # Inv1' = Inv1 + D1 ( E2' - E1' ) * ( C1' + C2' ) / 2 + Src1
     #                -- mass flux ---   ---- avg conc ---
-    # adjacent coastal (sink) point
+    # adjacent coastal (sink) point 3
     # Inv2' = Inv2 + D2 ( E1' - E2') * (C1' + C2')/2 - D1 E2' C2'
 
     # rearrange to deal in inventories 
@@ -480,7 +480,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                     #println(ix," ",iy); return
                     for i_sedtype in 1:n_sediment_types
                         volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[2] * # meters / step
-                            new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] * 
+                            new_sediment_fractions[ix,iy,i_sedtype] * 
                             areabox[iy] / time_step  # m3 / Myr
                         accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
                             ix_left(ix),iy,i_sedtype,
@@ -492,7 +492,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                 if ocean_sink[ix_right(ix),iy] > 0.
                     for i_sedtype in 1:n_sediment_types
                         volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[1] * 
-                            new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] * 
+                            new_sediment_fractions[ix,iy,i_sedtype] * 
                             areabox[iy] / time_step
                         accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
                             ix_right(ix),iy,i_sedtype,
@@ -504,7 +504,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                     if ocean_sink[ix,iy-1] > 0  
                         for i_sedtype in 1:n_sediment_types
                             volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[2] * 
-                                new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] *
+                                new_sediment_fractions[ix,iy,i_sedtype] *
                                 areabox[iy] / time_step
                             accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
                                 ix,iy-1,i_sedtype,
@@ -517,7 +517,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                     if ocean_sink[ix,iy+1] > 0 
                         for i_sedtype in 1:n_sediment_types
                             volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[1] * 
-                                new_sediment_fractions[ix,iy,i_sedtype,current_time_bin()] *
+                                new_sediment_fractions[ix,iy,i_sedtype] *
                                 areabox[iy] / time_step
                             accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
                                 ix,iy+1,i_sedtype,

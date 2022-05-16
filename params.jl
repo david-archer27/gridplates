@@ -77,7 +77,7 @@ world_diag_names = ["ocean_created_plate_area",
     "continental_CaCO3_deposition_rate", # when flooded
     "land_sediment_deposition_rate",
     "seafloor_sediment_deposition_rate",
-    "sediment_deposition_rate",
+    "global_sediment_deposition_rate",
     "coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
     "coastal_CaCO3_flux",
     "pelagic_CaCO3_deposition_rate",
@@ -89,7 +89,9 @@ world_frac_diag_names = [
     "coastal_sediment_fraction_runoff_flux",
     "ocean_sediment_fraction_influx",
     "seafloor_sediment_fraction_deposition_rate", 
-    "seafloor_sediment_fraction_overflow",]
+    "seafloor_sediment_fraction_overflow",
+    "global_sediment_fraction_deposition_rate",
+    "global_sediment_fraction_deposition_ratio"]
 
 
 # grid 
@@ -161,7 +163,7 @@ seafloor_base_diffcoeff = 3.e4 # m2 / yr
 land_CaCO3_dissolving_altitude = 10. # meters
 land_CaCO3_dissolution_rate = 10. # meters/Myr
 # 1000 meters dissolves in 100 Myr
-aolean_erosion_rate_constant = 0. # 1. / 100. # Myr
+aolean_erosion_rate_constant = 1. / 100. # Myr
 
 # CaCO3 parameters
 global_CO2_degassing_rate = 7.5E12 # mol / yr
