@@ -27,8 +27,8 @@ function land_bulk_sediment_transport( original_elevation_field, subaereal_mask,
             end
         end 
         if verbose == true
-            crust_land_clay_source = volumefield_total(get_diag("land_orogenic_clay_flux"))
-            land_clay_deposition = volumefield_total(get_diag("land_sediment_deposition_rate"))
+            crust_land_clay_source = volume_field(get_diag("land_orogenic_clay_flux"))
+            land_clay_deposition = volume_field(get_diag("land_sediment_deposition_rate"))
             println("land sed src ", crust_land_clay_source, " deposition ",land_clay_deposition)
         end
     end # blob 
@@ -156,7 +156,8 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
     end # diffuse or no
 end
 function check_subaereal_exposure()
-    # sets world.surface_type to exclude for next pass
+    # sets world.geomorphology to exclude for next pass,
+    # world.tectonics for land_soil_denuded
     n_failed = 0
     sediment_deposition_meters = 
         get_diag("land_sediment_deposition_rate") .* time_step
@@ -165,19 +166,47 @@ function check_subaereal_exposure()
         sediment_deposition_meters 
     for ix in 1:nx
         for iy in 1:ny
-            if world.surface_type[ix,iy] == sedimented_land &&
+            if world.geomorphology[ix,iy] == sedimented_land &&
                 new_total_sediment_thickness[ix,iy] < 0.
 
-                set_diag("surface_type_changes",ix,iy,land_soil_denuded)
-                world.surface_type[ix,iy] = exposed_basement
-                # leftover sediment gets turned into orogenic fluxes
-                #println("stripping point ",ix," ",iy)
+                world.geomorphology[ix,iy] = exposed_basement
+                for i_sedtype in 1:n_sediment_types
+                    accum_frac_diag("land_trapped_sediment_rate",
+                        ix,iy,i_sedtype,
+                        world.sediment_thickness[ix,iy] *
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] /
+                        time_step )
+                end
+                world.sediment_thickness[ix,iy] = 0.
+                world.sediment_layer_thickness[ix,iy,:] .= 0.
                 n_failed += 1
             end
         end
     end
     return n_failed  # , new_total_sediment_thickness 
 end
+function redistribute_denuded_land_sediment( )
+    # captures stuff in land_trapped_sediment_rate, adds it to 
+    # coastal_sediment_fraction_runoff_flux
+    trapped_land_fluxes = fill(0.,nx,ny,0:n_sediment_types)
+    trapped_land_fluxes[:,:,1:n_sediment_types] .= 
+        get_frac_diag("land_trapped_sediment_rate")
+    for i_sedtype in 1:n_sediment_types
+        trapped_land_fluxes[:,:,0] .+= trapped_land_fluxes[:,:,i_sedtype]
+    end
+    #println("trapped is ",volume_field(trapped_land_fluxes[:,:,1]))
+    coastal_fluxes = fill(0.,nx,ny,0:n_sediment_types)
+    submarine_mask = lt_mask(world.freeboard,0.)
+    redistribute_trapped_land_fluxes!( trapped_land_fluxes,
+        coastal_fluxes, submarine_mask ) 
+    #println("moved is ",volume_field(coastal_fluxes[:,:,1]))
+    for i_sedtype in 1:n_sediment_types
+        accum_frac_diag("coastal_sediment_fraction_runoff_flux",i_sedtype,
+            coastal_fluxes[:,:,i_sedtype])   
+    end
+    #println("down is ",volume_field(get_frac_diag("coastal_sediment_fraction_runoff_flux")[:,:,1]))
+end
+
 function land_sediment_fraction_transport( new_elevation_field, 
     subaereal_mask, 
     sediment_sources, ocean_sink )
@@ -191,9 +220,9 @@ function land_sediment_fraction_transport( new_elevation_field,
         land_area_sediment_fraction_transport( 
             new_elevation_field, 
             subaereal_blob, sediment_sources, ocean_sink ) 
-        # sets land_sediment_fraction_deposition_rate on land points
+            # sets land_sediment_fraction_deposition_rate on land points
         #println("i_blob ",i_blob," ",
-        #    volumefield_total(get_frac_diag("land_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment,1]))
+        #    volume_field(get_frac_diag("land_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment,1]))
     end 
 end
 function land_area_sediment_fraction_transport( 
@@ -241,8 +270,7 @@ function land_area_sediment_fraction_transport(
     list_x = []; list_y = []
     for ix in 1:nx
         for iy in 1:ny
-            if subaereal_blob[ix,iy] == 1 
-                # && new_total_sediment_thickness[ix,iy] > 0. 
+            if subaereal_blob[ix,iy] == 1 && new_total_sediment_thickness[ix,iy] > 0. 
                 #        should be prevented by check_subaereal_exposure 
                 list_pos_filled += 1
                 list_pos[ix,iy] = list_pos_filled
@@ -253,61 +281,63 @@ function land_area_sediment_fraction_transport(
     if list_pos_filled == 1
         A = 1.
         ix = list_x[1]; iy = list_y[1]
-        h_diffcoeffs = get_horizontal_diffcoeff(land_base_diffcoeff,iy)
-        v_diffcoeffs = get_vertical_diffcoeff(land_base_diffcoeff,iy)
-        if ocean_sink[ix_left(ix),iy] == 1 
-            A += h_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
-        end
-        if ocean_sink[ix_right(ix),iy] == 1 
-            A += h_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
-        end
-        if iy > 1
-            if ocean_sink[ix,iy-1] == 1
-                A += v_diffcoeffs[2] * 
-                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
+        if new_total_sediment_thickness[ix,iy] > 0.
+            h_diffcoeffs = get_horizontal_diffcoeff(land_base_diffcoeff,iy)
+            v_diffcoeffs = get_vertical_diffcoeff(land_base_diffcoeff,iy)
+            if ocean_sink[ix_left(ix),iy] == 1 
+                A += h_diffcoeffs[2] * 
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end
-        end
-        if iy < ny
-            if ocean_sink[ix,iy+1] == 1
-                A += v_diffcoeffs[1] * 
-                new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
+            if ocean_sink[ix_right(ix),iy] == 1 
+                A += h_diffcoeffs[2] * 
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
             end
-        end
-        for i_sedtype in 1:n_sediment_types
-
-            #=  old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
-                    world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
-            remaining_meters = - (
-                sediment_deposition_meters[ix,iy] +
-                world.sediment_thickness[ix,iy,current_time_bin()] 
-                )
-            i_bin = current_time_bin()
-            while remaining_meters > 0. && i_bin > 1
-                i_bin -= 1
-                remaining_meters -= world.sediment_thickness[ix,iy,i_bin]
-                if remaining_meters < 0. # layer i_bin has enough
-                    old_inventory += remaining_meters * 
-                        world.sediment_fractions[ix,iy,i_sedtype,i_bin]
-                else
-                    old_inventory += world.sediment_thickness[ix,iy,i_bin] * 
-                        world.sediment_fractions[ix,iy,i_sedtype,i_bin]
+            if iy > 1
+                if ocean_sink[ix,iy-1] == 1
+                    A += v_diffcoeffs[2] * 
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
                 end
-            end =#
-            old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
-            R = old_inventory + 
-                sediment_sources[ix,iy,i_sedtype] * time_step
-            new_inventory = A \ R   
-            #new_fraction = new_inventory / 
-            #    new_total_sediment_thickness[ix,iy]
-            fraction_deposition_rate = 
-                ( new_inventory - old_inventory ) / 
-                time_step
-            set_frac_diag("land_sediment_fraction_deposition_rate",
-                ix,iy,i_sedtype,fraction_deposition_rate)
+            end
+            if iy < ny
+                if ocean_sink[ix,iy+1] == 1
+                    A += v_diffcoeffs[1] * 
+                    new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
+                end
+            end
+            for i_sedtype in 1:n_sediment_types
+
+                #=  old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
+                        world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
+                remaining_meters = - (
+                    sediment_deposition_meters[ix,iy] +
+                    world.sediment_thickness[ix,iy,current_time_bin()] 
+                    )
+                i_bin = current_time_bin()
+                while remaining_meters > 0. && i_bin > 1
+                    i_bin -= 1
+                    remaining_meters -= world.sediment_thickness[ix,iy,i_bin]
+                    if remaining_meters < 0. # layer i_bin has enough
+                        old_inventory += remaining_meters * 
+                            world.sediment_fractions[ix,iy,i_sedtype,i_bin]
+                    else
+                        old_inventory += world.sediment_thickness[ix,iy,i_bin] * 
+                            world.sediment_fractions[ix,iy,i_sedtype,i_bin]
+                    end
+                end =#
+                old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
+                R = old_inventory + 
+                    sediment_sources[ix,iy,i_sedtype] * time_step
+                new_inventory = A \ R   
+                #new_fraction = new_inventory / 
+                #    new_total_sediment_thickness[ix,iy]
+                fraction_deposition_rate = 
+                    ( new_inventory - old_inventory ) / 
+                    time_step
+                set_frac_diag("land_sediment_fraction_deposition_rate",
+                    ix,iy,i_sedtype,fraction_deposition_rate)
+            end
         end
-    else # more than one point
+    elseif list_pos_filled > 1# more than one point
         A = spzeros( list_pos_filled, list_pos_filled )
         for i_pos = 1:list_pos_filled
             ix = list_x[i_pos]; iy = list_y[i_pos]
@@ -441,6 +471,9 @@ function land_area_sediment_fraction_transport(
             new_inventory_list = lu_A \ R
             #new_fraction_field = fill(0.,nx,ny)
             for i_pos = 1:list_pos_filled
+                if new_inventory_list[i_pos] != new_inventory_list[i_pos]
+                    error("NaN detected in land_area_sediment_fraction_transport")
+                end
                 ix = list_x[i_pos]; iy = list_y[i_pos]
                 #new_fraction = new_inventory_list[i_pos] / 
                 #    new_total_layer_sediment_thickness[ix,iy]
@@ -455,12 +488,13 @@ function land_area_sediment_fraction_transport(
     end 
 end
 function land_transport_elevation()
-    water_line = max( get_sealevel(), crust_level())
+    water_line = min( get_sealevel(), crust_level())
     crust_elevation = world.surface_elevation .- water_line
     return crust_elevation
 end
 function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink )    
     # resets and fills coastal_sediment_fraction_runoff_flux
+    # sets world.geomorphology for coastal_depocenter
     reset_frac_diag("coastal_sediment_fraction_runoff_flux")
     new_sediment_thickness, new_sediment_fractions = apply_land_sediment_fluxes( ) 
     # we want to get a preview without altering the real world 
@@ -487,7 +521,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                             volume_flux / areabox[iy] )
                         #println(i_sedtype," ",volume_flux)
                     end
-                    world.surface_type[ix_left(ix),iy] = coastal_depocenter
+                    world.geomorphology[ix_left(ix),iy] = coastal_depocenter
                 end
                 if ocean_sink[ix_right(ix),iy] > 0.
                     for i_sedtype in 1:n_sediment_types
@@ -498,7 +532,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                             ix_right(ix),iy,i_sedtype,
                             volume_flux / areabox[iy] )
                     end
-                    world.surface_type[ix_right(ix),iy] = coastal_depocenter
+                    world.geomorphology[ix_right(ix),iy] = coastal_depocenter
                 end
                 if iy > 1
                     if ocean_sink[ix,iy-1] > 0  
@@ -510,7 +544,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                                 ix,iy-1,i_sedtype,
                                 volume_flux / areabox[iy-1] )
                         end
-                        world.surface_type[ix,iy-1] = coastal_depocenter
+                        world.geomorphology[ix,iy-1] = coastal_depocenter
                     end
                 end
                 if iy < ny
@@ -523,7 +557,7 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
                                 ix,iy+1,i_sedtype,
                                 volume_flux / areabox[iy+1] )
                         end
-                        world.surface_type[ix,iy+1] = coastal_depocenter
+                        world.geomorphology[ix,iy+1] = coastal_depocenter
                     end
                 end
             end
@@ -531,6 +565,36 @@ function set_land_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sink
     end 
     return
 end
+function aolean_transport_bad_idea()
+    # resets and fills aolean_deposition_rate and aolean_deposition_rate
+    reset_diag("aolean_clay_erosion_rate")
+    reset_diag("aolean_clay_deposition_rate")
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.freeboard[ix,iy] < 0. &&
+                world.geomorphology[ix,iy] != exposed_basement
+                rate = 1. # m sediment / Myr
+                set_diag("aolean_clay_deposition_rate",ix,iy,rate) # m / Myr
+            end
+        end
+    end
+    total_aolean_deposition_rate = volume_field(get_diag("aolean_clay_deposition_rate")) 
+    land_dust_source_area = gt_mask(world.sediment_thickness,10.)
+    mean_aolean_erosion_rate = total_aolean_deposition_rate / land_area() # meters / Myr
+    # m3 / Myr
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.freeboard[ix,iy] > 0. &&
+                world.geomorphology[ix,iy] != exposed_basement
+
+                set_diag("aolean_clay_erosion_rate",ix,iy,
+                    mean_aolean_erosion_rate ) 
+            end
+        end
+    end
+    return
+end
+
 function aolean_transport()
     # resets and fills aolean_deposition_rate and aolean_deposition_rate
     reset_diag("aolean_clay_erosion_rate")
@@ -538,7 +602,7 @@ function aolean_transport()
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] > 0. &&
-                world.surface_type[ix,iy] != exposed_basement
+                world.geomorphology[ix,iy] != exposed_basement
                 rate = world.freeboard[ix,iy] *
                     aolean_erosion_rate_constant * # meters / Myr
                     rho_continent_crust / rho_sediment # m sediment / Myr
@@ -546,7 +610,7 @@ function aolean_transport()
             end
         end
     end
-    total_aolean_erosion = volumefield_total(get_diag("aolean_clay_erosion_rate")) 
+    total_aolean_erosion = volume_field(get_diag("aolean_clay_erosion_rate")) 
     mean_aolean_deposition_rate = total_aolean_erosion / ocean_area() # meters / Myr
     # m3 / Myr
     for ix in 1:nx
@@ -564,15 +628,16 @@ function check_reburial_exposed_basement()
     n_buried = 0
     for ix in 1:nx 
         for iy in 1:ny
-            if world.surface_type[ix,iy] == exposed_basement # incoming from plate regrid
+            if world.geomorphology[ix,iy] == exposed_basement # incoming from plate regrid
                 neighbors = get_border_neighbor_coords(ix,iy)
                 for nc in neighbors
                     ixn = nc[1]; iyn = nc[2]
-                    if world.surface_type[ixn,iyn] == sedimented_land &&
+                    if world.geomorphology[ixn,iyn] == sedimented_land &&
                         world.freeboard[ixn,iyn] > world.freeboard[ix,iy] 
-                        set_diag("surface_type_changes",ix,iy,burying_land)
+
+                        world.tectonics[ix,iy] = burying_land
                         n_buried += 1
-                        world.surface_type[ix,iy] = sedimented_land
+                        world.geomorphology[ix,iy] = sedimented_land
                     end
                 end
             end
@@ -588,13 +653,13 @@ function setup_surface_types()
     # build new surface type grid as initial condition, assumes soil cover everywhere
     isostacy()
     original_elevation = land_transport_elevation()
-    is_land = greater_than_mask_field( original_elevation, 0. )
-    depo_seafloor = greater_than_mask_field( - original_elevation, 100. )
+    is_land = gt_mask( original_elevation, 0. )
+    depo_seafloor = gt_mask( - original_elevation, 100. )
     ocean_nondep_shelf = 1. .- is_land .- depo_seafloor
     recast_surface_type = is_land .* sedimented_land .+ 
         depo_seafloor .* pelagic_seafloor .+
         ocean_nondep_shelf .* ocean_shelf
-    world.surface_type = recast_surface_type
+    world.geomorphology = recast_surface_type
 end
 =#
 function land_cell_balance(ix,iy)

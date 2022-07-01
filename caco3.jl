@@ -1,6 +1,6 @@
 function distribute_CaCO3_sedimentation( )
     local ocean_CO3, total_deposition
-    terrestrial_CaCO3_dissolution = volumefield_total(
+    terrestrial_CaCO3_dissolution = volume_field(
         get_diag("land_CaCO3_dissolution_rate") ) # m3 / Myr
     silicate_weathering_CaCO3_rate =
         global_CO2_degassing_rate * # mol / yr
@@ -48,9 +48,10 @@ function distribute_CaCO3_sedimentation( )
             ocean_CO3_low = ocean_CO3; depo_low = total_deposition
         end
         imbalance = abs( total_deposition - target_deposition )
-
+        #println(" CO3 ",ocean_CO3," " )
     end
-    println("CaCO3 iters ", n_iters, " tot ", total_deposition, 
+    println()
+    println("  CaCO3 iters ", n_iters, " tot ", total_deposition, 
     " CO3 ",ocean_CO3," bal ",imbalance)
     set_diag("coastal_CaCO3_flux", 
         get_coastal_CaCO3_deposition_field( ocean_CO3 ) )
@@ -60,19 +61,21 @@ function distribute_CaCO3_sedimentation( )
         get_continental_CaCO3_deposition_field( ocean_CO3 ) )
 end
 function get_total_CaCO3_deposition_rate( ocean_CO3 )
-    coastal_CaCO3_deposition = volumefield_total( 
+    coastal_CaCO3_deposition = volume_field( 
         get_coastal_CaCO3_deposition_field( ocean_CO3 ) )
-    pelagic_CaCO3_deposition = volumefield_total( 
+    pelagic_CaCO3_deposition = volume_field( 
         get_pelagic_CaCO3_deposition_field( ocean_CO3 ) )
-    continental_CaCO3_deposition = volumefield_total( 
+    continental_CaCO3_deposition = volume_field( 
         get_continental_CaCO3_deposition_field( ocean_CO3 ) )
     total_deposition = coastal_CaCO3_deposition + 
         pelagic_CaCO3_deposition + continental_CaCO3_deposition
     #imbalance = abs( total_deposition - target_deposition )
-    #println("ocean CO3 ",ocean_CO3,
-    #    " coastal ",coastal_CaCO3_deposition,
-    #    " pelagic ", pelagic_CaCO3_deposition,
-    #    " continental ",continental_CaCO3_deposition)
+    #=println("ocean CO3 ",ocean_CO3,
+        " coastal ",coastal_CaCO3_deposition,
+        " pelagic ", pelagic_CaCO3_deposition,
+        " continental ",continental_CaCO3_deposition,
+        " tot ", total_deposition)
+        =#
     return total_deposition
 end
 function get_continental_CaCO3_deposition_field( ocean_CO3 ) 
@@ -94,7 +97,7 @@ function get_pelagic_CaCO3_deposition_field( ocean_CO3 )
     pelagic_rates = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
-            if world.surface_type[ix,iy] <= coastal_depocenter # or pelagic
+            if world.geomorphology[ix,iy] <= coastal_depocenter # or pelagic
                 depth = - world.freeboard[ix,iy]
                 delta_CO3 = ocean_CO3 - co3_saturation( depth )
                 set_diag("seafloor_delta_CO3",ix,iy,delta_CO3)
@@ -131,7 +134,7 @@ function get_pelagic_deposition_rate( ocean_CO3, delta_CO3, iy )
 end
 function get_coastal_CaCO3_deposition_field( ocean_CO3 )
     # confined to coastal_depocenter cells, scaled by latitude
-    depo_mask = generate_mask_field( world.surface_type, coastal_depocenter )
+    depo_mask = eq_mask( world.geomorphology, coastal_depocenter )
     depo_rate = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny

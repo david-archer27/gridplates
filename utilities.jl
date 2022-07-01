@@ -3,17 +3,20 @@
 function create_world( age )    # no plateIDs or numbers yet
     plateIDmap = fill(0.,nx,ny)
     plateIDlist = []
-    crust_type = fill(notyetdefined,nx,ny)
+    crust_type = fill(not_yet_defined,nx,ny)
     crust_age = fill(0.,nx,ny)
     sealevel = get_sealevel()
     crust_thickness = fill(0.,nx,ny) # pertaining to geomorphology
     crust_density = fill(0.,nx,ny)
-    surface_type = fill(0.,nx,ny)
-    sediment_thickness = fill(0.,nx,ny)
+    geomorph_map = fill(0,nx,ny)
+    tectonics_map = fill(0,nx,ny)
+    sediment_thickness = fill(1.,nx,ny)
     sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    sediment_surface_fractions[:,:,initial_sediment_type] .= 1.
     sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
     sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,
         n_sediment_time_bins)
+    sediment_layer_fractions[:,:,initial_sediment_type,1] .= 1.
     elevation_offset = fill(0.,nx,ny)
     surface_elevation = fill(0.,nx,ny)
     freeboard = fill(0.,nx,ny)
@@ -21,7 +24,7 @@ function create_world( age )    # no plateIDs or numbers yet
     n_frac_diags = length(world_frac_diag_names)
     frac_diags = fill(0.,nx,ny,n_sediment_types,n_frac_diags)
     world = world_struct(age,sealevel,plateIDmap,plateIDlist,crust_type,crust_age,
-        crust_thickness,crust_density,surface_type,
+        crust_thickness,crust_density,geomorph_map,tectonics_map,
         sediment_thickness,sediment_surface_fractions,
         sediment_layer_thickness,sediment_layer_fractions,
         elevation_offset,surface_elevation,freeboard,
@@ -35,33 +38,30 @@ function create_world( age )    # no plateIDs or numbers yet
                 world.crust_type[ix,iy] = continent_crust
                 world.crust_thickness[ix,iy] = continent_crust_h0
                 world.crust_density[ix,iy] = rho_continent_crust
-                world.surface_type[ix,iy] = sedimented_land
+                world.geomorphology[ix,iy] = sedimented_land
             else
                 world.crust_type[ix,iy] = ocean_crust
                 world.crust_thickness[ix,iy] = ocean_crust_h0
                 world.crust_density[ix,iy] = rho_ocean_crust
-                world.surface_type[ix,iy] = pelagic_seafloor
+                world.geomorphology[ix,iy] = pelagic_seafloor
             end
         end
     end
     return world
 end
 function create_blank_plate(plateID)
-    crust_type = fill(notyetdefined,nx,ny)
+    crust_type = fill(not_yet_defined,nx,ny)
     crust_age = fill(0.,nx,ny)
     crust_thickness = fill(0.,nx,ny)
     crust_density = fill(0.,nx,ny)
-    surface_type = fill(0.,nx,ny)
+    tectonics_map = fill(0,nx,ny)
     sediment_thickness = fill(0.,nx,ny)
     sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
     sediment_surface_fractions[:,:,initial_sediment_type] .= 1.
     sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
     sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
     #sediment_layer_thickness[:,:,1] .= 1.0
-     # initial meter of CaCO3 contrast with Clay orogenic source
     sediment_layer_fractions[:,:,1,initial_sediment_type] .= 1.0
-    #sediment_thickness[:,:,1] .= 10.
-    #sediment_CaCO3_frac = fill(0.,nx,ny,n_sediment_time_bins)
     rotationmatrix = fill(0,3,3)
     resolvetime = -1
     parentstack = []
@@ -69,7 +69,7 @@ function create_blank_plate(plateID)
     firstappearance = -1
     lastappearance = -1
     plate = plate_struct(plateID,crust_type,crust_age,
-        crust_thickness,crust_density,surface_type,
+        crust_thickness,crust_density,tectonics_map,
         sediment_thickness,sediment_surface_fractions,
         sediment_layer_thickness,sediment_layer_fractions,
         rotationmatrix,resolvetime,
@@ -95,15 +95,23 @@ function initialize_plates()
         plate.firstappearance, plate.lastappearance = first_last_appearance(plate.plateID)
         plate.lastparentstack = deepcopy(plate.parentstack)
     end
-    remask_plates()
+    #remask_plates()
+    for (plateID,plate) in plates
+        initial_mask_plate!(plate)
+    end
+    # initializes plate.crust_type = not_yet_defined points, 
+    # now plate.crust_type = not_at_surface, ocean_crust, or continent_crust
+    # nothing in plates.gridpoint_changes
     clear_world_process_arrays()
+    # resets world.geomorphology, world.tectonics
 end
 function create_everything( age )
     global world = create_world( age )
+    # sets world.geomorphology
     global plates = create_empty_plates( )
     initialize_plates( )
-    fill_world_from_plates( )
-    #setup_surface_types( )
+    fill_world_from_plates( ) 
+    # leaves world.geomorphology, world.geomorphology_changes alone
     return
 end
 
@@ -167,9 +175,9 @@ function apply_ocean_sediment_fluxes( )
     # the surface values into world.sediment_surface_fractions
     # this is only called once, at the end of the step, so there is
     # no need to externalize dealing with world.* variables
-    verbose = false
-    depositing_seafloor_mask = generate_mask_field(world.surface_type,pelagic_seafloor) .+
-        generate_mask_field(world.surface_type,coastal_depocenter)
+    verbose = true
+    #depositing_seafloor_mask = eq_mask(world.geomorphology,pelagic_seafloor) .+
+    #    eq_mask(world.geomorphology,coastal_depocenter)
     seafloor_sediment_deposition_rate = get_diag("seafloor_sediment_deposition_rate")
     sediment_fraction_deposition_rates = 
         get_frac_diag("seafloor_sediment_fraction_deposition_rate")
@@ -181,16 +189,15 @@ function apply_ocean_sediment_fluxes( )
     new_sediment_layer_thickness[:,:,current_time_bin()] .+=
         seafloor_sediment_deposition_rate .* time_step
     
-    if verbose == true
-        println("apply total dep ", volumefield_total(sediment_deposition_rate), 
-            " fracs ", volumefield_total(sediment_fraction_deposition_rates[:,:,1]),
-            " ", volumefield_total(sediment_fraction_deposition_rates[:,:,2]))
-    end
+    #if verbose == true
+    #    println("apply total dep ", volume_field(seafloor_sediment_deposition_rate), 
+    #        " fracs ", volume_field(sediment_fraction_deposition_rates[:,:,1]),
+    #        " ", volume_field(sediment_fraction_deposition_rates[:,:,2]))
+    #end
 
     for ix in 1:nx
         for iy in 1:ny
-            if depositing_seafloor_mask[ix,iy] == 1 &&
-                new_total_sediment_thickness[ix,iy,current_time_bin()] > 0.
+            if seafloor_sediment_deposition_rate[ix,iy] > 0.
 
                 for i_sedtype in 1:n_sediment_types
                     old_inventory = world.sediment_layer_thickness[ix,iy,current_time_bin()] * 
@@ -211,31 +218,37 @@ function apply_ocean_sediment_fluxes( )
         end
     end
 end
-function update_world_continents_from_file()    # continents
-    world.plateID = read_plateIDs()
+function update_world_continents_from_file()    
+    # sets new continents
+    local new_crust_type
+    world.plateID = read_plateIDs() # wants new age in world.age
     continentID = read_continentIDs()
     for ix in 1:nx
         for iy in 1:ny
-            new_crust_type = ocean_crust
             if continentID[ix,iy] > 0
                 new_crust_type = continent_crust
+            else
+                new_crust_type = ocean_crust
             end
             if world.crust_type[ix,iy] != new_crust_type
                 if new_crust_type == continent_crust
-                    record_flux_into_world_diags("ocean_2_continent_world_area",
-                        iy,ix,iy)
+                    world.geomorphology[ix,iy] = sedimented_land
+                    world.tectonics[ix,iy] = ocean_to_continent
+                    accum_diag("ocean_2_continent_world_area",
+                        ix,iy,1.)
                     world.crust_thickness[ix,iy] = continent_crust_h0
                     world.crust_density[ix,iy] = rho_continent_crust
-                    world.surface_type[ix,iy] = sedimented_land
-                    world.sediment_thickness[ix,iy] = initial_sediment_thickness
-                    world.sediment_surface_fractions[ix,iy,:] .= 0.
-                    world.sediment_surface_fractions[ix,iy,initial_sediment_type] = 1.
+                    #world.sediment_thickness[ix,iy] = initial_land_sediment_thickness
+                    #world.sediment_surface_fractions[ix,iy,:] .= 0.
+                    #world.sediment_surface_fractions[ix,iy,initial_sediment_type] = 1.
                 else # new_crust_type == ocean_crust
-                    record_flux_into_world_diags("continent_2_ocean_world_area",
-                        iy,ix,iy)
+                    world.geomorphology[ix,iy] = pelagic_seafloor
+                    world.tectonics[ix,iy] = continent_to_ocean
+                    accum_diag("continent_2_ocean_world_area",
+                        ix,iy,1.)
                     world.crust_thickness[ix,iy] = ocean_crust_h0
                     world.crust_density[ix,iy] = rho_ocean_crust
-                    world.surface_type[ix,iy] = pelagic_seafloor
+                    #world.geomorphology[ix,iy] = pelagic_seafloor
                     #record_continent_disappearing_from_world(ix,iy)
                 end
                 world.crust_type[ix,iy] = new_crust_type
@@ -243,6 +256,54 @@ function update_world_continents_from_file()    # continents
         end
     end
     return
+end
+function scale_global_sediment_components( scale_factors )
+    equivalent_thickness = fill(0.,n_sediment_types)
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.crust_type[ix,iy] == continent_crust
+                for i_sedtype in 1:n_sediment_types
+                    equivalent_thickness[i_sedtype] = 
+                        world.sediment_thickness[ix,iy] *
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] *
+                        scale_factors[i_sedtype]
+                end
+                world.sediment_thickness[ix,iy] = 0.
+                for i_sedtype in 1:n_sediment_types
+                    world.sediment_thickness[ix,iy] += 
+                        equivalent_thickness[i_sedtype]
+                end
+                if world.sediment_thickness[ix,iy] > 0.
+                    for i_sedtype in 1:n_sediment_types
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] = 
+                            equivalent_thickness[i_sedtype] / 
+                            world.sediment_thickness[ix,iy]
+                    end
+                end
+            else 
+                for ibin in 1:n_sediment_time_bins
+                    for i_sedtype in 1:n_sediment_types
+                        equivalent_thickness[i_sedtype] = 
+                            world.sediment_layer_thickness[ix,iy,ibin] *
+                            world.sediment_layer_fractions[ix,iy,i_sedtype,ibin] *
+                            scale_factors[i_sedtype]
+                    end
+                    world.sediment_layer_thickness[ix,iy,ibin] = 0.
+                    for i_sedtype in 1:n_sediment_types
+                        world.sediment_layer_thickness[ix,iy,ibin] += 
+                            equivalent_thickness[i_sedtype]
+                    end
+                    if world.sediment_layer_thickness[ix,iy,ibin] > 0.
+                        for i_sedtype in 1:n_sediment_types
+                            world.sediment_layer_fractions[ix,iy,i_sedtype,ibin] = 
+                                equivalent_thickness[i_sedtype] / 
+                                world.sediment_layer_thickness[ix,iy,ibin]
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 function increment_world_age()
     world.crust_age .+= time_step
@@ -398,8 +459,8 @@ function clamp_field(field,value)
     end
     return newfield
 end
-function generate_mask_field(field,value)
-    newfield = fill(0.,nx,ny)
+function eq_mask(field,value)
+    newfield = fill(0,nx,ny)
     #Threads.@threads
     for ix in 1:nx
         for iy in 1:ny
@@ -410,11 +471,22 @@ function generate_mask_field(field,value)
     end
     return newfield
 end
-function greater_than_mask_field(field,value)
+function gt_mask(field,value)
     newfield = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
             if field[ix,iy] >= value
+                newfield[ix,iy] = 1
+            end
+        end
+    end
+    return newfield
+end
+function lt_mask(field,value)
+    newfield = fill(0.,nx,ny)
+    for ix in 1:nx
+        for iy in 1:ny
+            if field[ix,iy] <= value
                 newfield[ix,iy] = 1
             end
         end
@@ -538,8 +610,8 @@ function world_diag_pos(diag_name)
     diag_pos = findfirst(isequal(diag_name),world_diag_names)
     return diag_pos
 end
-function record_flux_into_world_diags(fluxname,jsource,iworld,jworld,mult::Float64=1.)
-    #area = areabox[jsource]
+#=function record_flux_into_world_diags(fluxname,jsource,iworld,jworld,mult::Float64=1.)
+    area_ratio = areabox[jsource] / areabox[jworld]
     accum_diag(fluxname,iworld,jworld,mult)
     return
 end
@@ -548,8 +620,10 @@ function record_sediment_fraction_flux_into_world_diags(fluxname,sediment_type,
     #area = areabox[jsource]
     accum_frac_diag(fluxname,iworld,jworld,sediment_type,mult)
     return
-end
+end=#
 function clear_world_process_arrays()
+    world.geomorphology .= 0
+    world.tectonics .= 0
     world.diags .= 0.
     world.frac_diags .= 0.
     return
@@ -571,48 +645,90 @@ function clear_geomorph_process_arrays()
         "coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
         "coastal_CaCO3_flux",
         "pelagic_CaCO3_deposition_rate",
-        "seafloor_delta_CO3",
-        "surface_type_changes"]
+        "seafloor_delta_CO3"]
         #println(idiag)
         reset_diag(idiag)
     end
     world.frac_diags .= 0.
 end
-function global_plate_sediment_inventories()
-    inventories = [0.,0.]
-    for (plateID,plate) in plates
-        for ix in 1:nx
-            for iy in 1:ny
+function world_land_sediment_inventories(  )
+    inventories = fill(0., 0: n_sediment_types) # total, fraction1, fraction2 
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.crust_type[ix,iy] == continent_crust
+                inventories[0] += world.sediment_thickness[ix,iy] *
+                    areabox[iy]
                 for i_sedtype in 1:n_sediment_types
-                    if plate.crust_type[ix,iy] == continent_crust
-                        inventories[i_sedtype] += 
-                            plate.sediment_thickness[ix,iy] *
-                            plate.sediment_surface_fractions[ix,iy,i_sedtype] *
+                    inventories[ i_sedtype ] += 
+                        world.sediment_thickness[ix,iy] *
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] *
+                        areabox[iy]
+                end 
+            end
+        end
+    end
+    return inventories
+end
+function world_ocean_sediment_inventories(  )
+    inventories = fill(0., 0: n_sediment_types) # total, fraction1, fraction2 
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.crust_type[ix,iy] == ocean_crust
+                for ibin in 1:n_sediment_time_bins
+                    inventories[0] += world.sediment_layer_thickness[ix,iy,ibin] *
+                        areabox[iy]
+                    for i_sedtype in 1:n_sediment_types
+                        inventories[ i_sedtype ] += 
+                            world.sediment_layer_thickness[ix,iy,ibin] *
+                            world.sediment_layer_fractions[ix,iy,i_sedtype,ibin] *
                             areabox[iy]
-                    end 
-                    if plate.crust_type[ix,iy] == ocean_crust
-                        for ibin in 1:n_sediment_time_bins
-                            inventories[i_sedtype] += 
-                                plate.sediment_layer_thickness[ix,iy,ibin] *
-                                plate.sediment_layer_fractions[ix,iy,i_sedtype,ibin] *
-                                areabox[iy]
-                        end
-                    end 
+                    end
                 end
             end
         end
     end
     return inventories
 end
-function global_world_sediment_inventory()
-    inventory = 0.
+function world_sediment_inventories(  )
+    inventories = world_land_sediment_inventories() .+ 
+        world_ocean_sediment_inventories(  )
+    return inventories
+end
+function plate_sediment_inventories( plate )
+    inventories = fill(0., 0:n_sediment_types) # total, fraction1, fraction2 
     for ix in 1:nx
         for iy in 1:ny
-            inventory += world.sediment_thickness[ix,iy] *
-                areabox[iy]
+            if plate.crust_type[ix,iy] == continent_crust
+                inventories[0] += plate.sediment_thickness[ix,iy] *
+                    areabox[iy]
+                for i_sedtype in 1:n_sediment_types
+                    inventories[i_sedtype] += 
+                        plate.sediment_thickness[ix,iy] *
+                        plate.sediment_surface_fractions[ix,iy,i_sedtype] *
+                        areabox[iy]
+                end 
+            elseif plate.crust_type[ix,iy] == ocean_crust
+                for ibin in 1:n_sediment_time_bins
+                    inventories[0] += plate.sediment_layer_thickness[ix,iy,ibin] *
+                        areabox[iy]
+                    for i_sedtype in 1:n_sediment_types
+                        inventories[i_sedtype] += 
+                            plate.sediment_layer_thickness[ix,iy,ibin] *
+                            plate.sediment_layer_fractions[ix,iy,i_sedtype,ibin] *
+                            areabox[iy]
+                    end
+                end
+            end
         end
     end
-    return inventory
+    return inventories
+end
+function global_plate_sediment_inventories()
+    global_inventories = fill(0., 0:n_sediment_types)
+    for (plateID,plate) in plates
+        global_inventories .+= plate_sediment_inventories( plate )
+    end
+    return global_inventories
 end
 function calculate_agebins(varfield,agefield,agebinvalues)
     # agebinvalues e.g. [0., 5., 10., ...]
@@ -643,7 +759,7 @@ function areafield_total(areafield)
     return areatot  # km2
 end
 function land_elevation()
-    is_land = greater_than_mask_field(world.freeboard, 0.)
+    is_land = gt_mask(world.freeboard, 0.)
     land_elevation = world.freeboard .* is_land
     return land_elevation
 end
@@ -671,12 +787,18 @@ function field_mean(field)
     valueavg = valuetot / areatot
     return valueavg
 end
-function volumefield_total(meterfield) # used for meters of erosion to m3 globally
+function volume_field(meterfield) # used for meters of erosion to m3 globally
     total = 0.
     for ix in 1:nx
         for iy in 1:ny
+            if meterfield[ix,iy] != meterfield[ix,iy]
+                println("Nan at ",[ix,iy])
+            end
             total += meterfield[ix,iy] * areabox[iy] # m3
         end
+    end
+    if total != total
+        error("NaN detected")
     end
     return total
 end
@@ -710,7 +832,7 @@ function calculate_total_plate_area()
     for (age, plate) in plates
         for ix in 1:nx
             for iy in 1:ny
-                if plate.crust_type[ix,iy] != notatsurface
+                if plate.crust_type[ix,iy] != not_at_surface
                     totalarea += areabox[iy]
                 end
             end
@@ -727,6 +849,7 @@ function crow_flies(lat1,lon1,lat2,lon2)
     a = sin(delta_theta/2.) * sin(delta_theta/2.) +
        cos(theta1) * cos(theta2) *
        sin(delta_lambda/2.) * sin(delta_lambda/2.)
+    #println("crow ",[a,1-a])
     c = 2. * atan(sqrt(a),sqrt(1-a))
     distance_meters = r * c
     return distance_meters
@@ -783,6 +906,7 @@ scotese_elevation_plot_ages = [535,530,525,520,515,510,505,500,495,490,485,480,
     290,285,280,275,270,265,260,255,245,240,235,230,225,220,215,210,205,200,
     195,190,185,180,175,170,165,160,155,150,145,140,135,130,125,120,115,110,
     100,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,5,0]
+#using NetCDF
 function nearest_scotese_elevation()
     index = search_sorted_nearest(scotese_elevation_plot_ages,world.age)
     scotese_age = scotese_elevation_plot_ages[index]
@@ -793,10 +917,10 @@ function nearest_scotese_elevation()
         stringage = string(scotese_age)
     end
     #println(stringage)
-    filename = pwd() * "../scotese_elevations/scotese." * stringage * "Ma.nc"
-    #println(filename)
-    field = ncread(filename,"z")
-    return field[1:360,1:180], scotese_age
+    filename = animation_output_directory * "scotese_elevation/scotese." * stringage * "Ma.bson"
+    println(filename)
+    BSON.@load filename field
+    return field, scotese_age
 end
 function check_blob_completeness( blobfield, unaccountedforfield )
     neighbors = get_blob_neighbors( blobfield )
@@ -899,6 +1023,23 @@ function get_maskfield_census( maskfield )
     end
     return n_points
 end
+function get_blob_fringe_list( maskfield )
+    fringe_list = []
+    for ix in 1:nx
+        for iy in 1:ny
+            if maskfield[ix,iy] == 1
+                coordpairs = get_border_neighbor_coords(ix,iy) # this includes corner points
+                for coordpair in coordpairs
+                    ixt = coordpair[1]; iyt = coordpair[2]
+                    if maskfield[ixt,iyt] == 0
+                        push!(fringe_list,[ix,iy])
+                    end
+                end
+            end
+        end
+    end
+    return fringe_list
+end
 function get_blob_fringe( maskfield )
     fringe_field = fill(0,nx,ny)
     for ix in 1:nx
@@ -920,35 +1061,35 @@ function get_blob_onion_layers( maskfield )
     fringe_fields = []
     choppable_maskfield = deepcopy(maskfield)
     n_layers = 0
-    voltot = volumefield_total(choppable_maskfield)
+    voltot = volume_field(choppable_maskfield)
     while voltot > 0. # && n_layers < 10
         fringe_field = get_blob_fringe( choppable_maskfield )
         push!(fringe_fields,fringe_field)
         choppable_maskfield .-= fringe_field
-        voltot = volumefield_total(choppable_maskfield)
+        voltot = volume_field(choppable_maskfield)
         n_layers += 1
     end
     return fringe_fields
 end
 function show_sediment_budget()
-    crustprod = volumefield_total(get_diag("crust_clay_source_rate"))
+    crustprod = volume_field(get_diag("crust_clay_source_rate"))
     println("total production  ",crustprod)
-    totsed = volumefield_total(get_diag("sediment_deposition_rate"))
+    totsed = volume_field(get_diag("sediment_deposition_rate"))
     println(" total deposit    ",totsed)
-    oro2land = volumefield_total(get_diag("land_orogenic_clay_flux"))
+    oro2land = volume_field(get_diag("land_orogenic_clay_flux"))
     println(" oro to land      ",oro2land)
-    landsed = volumefield_total(get_diag("land_clay_deposition_rate"))
+    landsed = volume_field(get_diag("land_clay_deposition_rate"))
     println(" land deposition  ",landsed)
-    runoff = volumefield_total(get_diag("seafloor_runoff_clay_flux"))
+    runoff = volume_field(get_diag("seafloor_runoff_clay_flux"))
     println(" runoff           ",runoff)
-    aolerod = volumefield_total(get_diag("aolean_erosion_rate"))
+    aolerod = volume_field(get_diag("aolean_erosion_rate"))
     println(" aolean erosion   ",aolerod)
     println(" land balance     ",oro2land - landsed - runoff - aolerod)
-    oro2ocn = volumefield_total(get_diag("coastal_orogenic_clay_flux"))
+    oro2ocn = volume_field(get_diag("coastal_orogenic_clay_flux"))
     println(" to ocean         ",oro2ocn)
-    ocnsed = volumefield_total(get_diag("seafloor_clay_deposition_rate"))
+    ocnsed = volume_field(get_diag("seafloor_clay_deposition_rate"))
     println(" ocean deposition ",ocnsed)
-    aoldep = volumefield_total(get_diag("aolean_deposition_rate"))
+    aoldep = volume_field(get_diag("aolean_deposition_rate"))
     println(" aolean deposit   ",aoldep)
     println(" ocn balance      ",oro2ocn - ocnsed + runoff + aoldep)
 end

@@ -130,5 +130,16 @@ function ocean_area()
     end
     return ocean_area
 end
+function land_area()
+    land_area = 0.
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.freeboard[ix,iy] > 0.
+                land_area += areabox[iy] # m2
+            end
+        end
+    end
+    return land_area
+end
 
 
