@@ -1,30 +1,39 @@
 function orogeny()
-    orogeny_footprint = fill(0.,nx,ny)
+    orogenic_uplift_rates = fill(0.,nx,ny,0:2) # sum, cont, subd
+    # unmasked for land
+    world_mask = fill(1,nx,ny)
     for (name,orogenic_event) in orogenic_events
         if world.age <= orogenic_event.onset && world.age >= orogenic_event.finish
+            #println( orogenic_event.name  )
             footprint = orogenic_event.footprint .* # 0 or 1
-                orogenic_event.altitude*1e3 ./      # meters uplift
-                ( orogenic_event.onset - orogenic_event.finish ) .*
-                time_step
+                orogenic_uplift_parameter .* 
+                orogenic_base_uplift_meters .*
+                orogenic_event.uplift_scale ./ # meters of crust over the event
+                ( orogenic_event.onset - orogenic_event.finish ) # Myr
             rotatedfootprint = fill_world_orogeny(footprint)
-            smoothed = smooth_orogeny(rotatedfootprint)
+            smooth_world!( rotatedfootprint, orogeny_smooth_coeff )
+            #smooth_masked_field!(rotatedfootprint, world_mask, orogeny_smooth_coeff)
             #@printf("%s %.1e " , name,orogeny_intensity(smoothed))
-            orogeny_footprint .+= smoothed
+            orogenic_uplift_rates[:,:,1] .+= rotatedfootprint
         end
     end
-    orogeny_footprint .*= get_continent_mask()
-    set_diag("continent_orogenic_uplift_rate",orogeny_footprint)
-    subduction_orogeny = smooth_orogeny(get_subduction_orogeny())
-    for ix in 1:nx
+    #orogeny_footprint .*= get_continent_mask()
+    #set_diag("continent_orogenic_uplift_rate",orogeny_footprint)
+    subduction_orogeny = get_subduction_orogeny()
+    smooth_world!(subduction_orogeny,subduction_orogeny_smooth_coeff)
+    #=for ix in 1:nx
         for iy in 1:ny
-            if orogeny_footprint[ix,iy] > 0.
-                subduction_orogeny[ix,iy] = 0.
+            if orogenic_uplift_rates[ix,iy,1] > 0.
+                subduction_orogeny[ix,iy] -= orogenic_uplift_rates[ix,iy,1]
             end
         end
-    end
-    subduction_orogeny .*= get_continent_mask()
-    set_diag("subduction_orogenic_uplift_rate",subduction_orogeny)
-    return
+    end=#
+    orogenic_uplift_rates[:,:,2] .= subduction_orogeny
+    orogenic_uplift_rates[:,:,0] = orogenic_uplift_rates[:,:,1] .+
+        orogenic_uplift_rates[:,:,2]
+    #subduction_orogeny .*= get_continent_mask()
+    #set_diag("subduction_orogenic_uplift_rate",subduction_orogeny)
+    return orogenic_uplift_rates
 end
 function fill_world_orogeny(footprint) # requires at least create_world(age)
     age = world.age
@@ -46,24 +55,109 @@ function fill_world_orogeny(footprint) # requires at least create_world(age)
     end
     return world_orogeny
 end
+
 function get_subduction_orogeny()
     orogenic_footprint = fill(0.,nx,ny)
-    subduction = get_diag("ocean_subduct_plate_area")
-    for ix in 1:nx
-        for iy in 1:ny
-            if subduction[ix,iy] > 0.
-                uplift = subduction[ix,iy] * areabox[iy] * time_step * subduction_orogeny_parameter
-                coordlist = get_neighbor_coords(ix,iy,2,2)
-                for coord in coordlist
-                    if world.crust_type[coord[1],coord[2]] >= continent_crust
-                        orogenic_footprint[coord[1],coord[2]] = uplift
+    crust_convergence = get_diag("ocean_subduct_plate_thickness") .* # meters (vol/area) / time_step
+        subduction_orogeny_parameter
+    new_crust_convergence = fill(0.,nx,ny)
+    #println(volume_field(crust_convergence))       
+    for plateID in world.plateIDlist
+        #plateID = 201
+        #println("plateID ",plateID)
+        original_plate_blob = eq_mask(world.plateID,plateID)
+        plate_blob = deepcopy( original_plate_blob )
+        expanded_plate_blob = deepcopy( original_plate_blob )
+        n_onion_skins = Int( floor( subduction_orogeny_hor_offset / delta_y ) )
+        for i_skin in 1:n_onion_skins # major shell 
+            neighbor_cell_field = get_blob_neighbors( plate_blob )
+            expanded_plate_blob = plate_blob .+ neighbor_cell_field
+            #println(volume_field(crust_convergence))
+            for ix in 1:nx
+                for iy in 1:ny
+                    if neighbor_cell_field[ix,iy] == 1 # && crust_convergence[ix,iy] > 0.
+                        coordpairs = get_border_neighbor_coords(ix,iy)
+                        filtered_coordpairs = []
+                        for coordpair in coordpairs
+                            ixn = coordpair[1]; iyn = coordpair[2]
+                            if expanded_plate_blob[ixn,iyn] == 0
+                                push!(filtered_coordpairs, coordpair)
+                            end
+                        end
+                        if length(filtered_coordpairs) > 0
+                            area_neighbors = 0.
+                            for coordpair in filtered_coordpairs
+                                ixn = coordpair[1]; iyn = coordpair[2]
+                                area_neighbors += areabox[iyn]
+                            end
+                            for coordpair in filtered_coordpairs
+                                ixn = coordpair[1]; iyn = coordpair[2]
+                                new_crust_convergence[ixn,iyn] += crust_convergence[ix,iy] * 
+                                    areabox[iy] / area_neighbors
+                                #new_plate_blob[ixn,iyn] = 1
+                            end
+                            crust_convergence[ix,iy] = 0.
+                        else
+                            new_crust_convergence[ix,iy] = crust_convergence[ix,iy]
+                            crust_convergence[ix,iy] = 0.
+                            # just for conservation; itll be ocean probably
+                        end
                     end
                 end
             end
+            crust_convergence .+= new_crust_convergence
+            plate_blob = deepcopy(expanded_plate_blob)
+            new_crust_convergence = fill(0.,nx,ny)
+            #println("skin ", volume_field(crust_convergence))  
+            n_extra_cells_max = 5
+            for i_sub_cell_move in 1:n_extra_cells_max
+                #i_sub_cell_move = 1            
+                for iy in 1:ny # fill in horizontally in higher lat
+                    if n_equiv_boxes[iy] >= i_sub_cell_move
+                        for ix in 1:nx
+                            if neighbor_cell_field[ix,iy] == 1 && crust_convergence[ix,iy] > 0.
+                                coordpairs = []
+                                if plate_blob[ix_left(ix),iy] == 0
+                                    push!( coordpairs, [ix_left(ix),iy] )
+                                end
+                                if plate_blob[ix_right(ix),iy] == 0
+                                    push!( coordpairs, [ix_right(ix),iy] )
+                                end
+                                
+                                if length(coordpairs) > 0
+                                    area_neighbors = 0.
+                                    #error(ix," ",iy)
+                                    for coordpair in coordpairs
+                                        ixn = coordpair[1]; iyn = coordpair[2]
+                                        area_neighbors += areabox[iyn]
+                                    end
+                                    for coordpair in coordpairs
+                                        ixn = coordpair[1]; iyn = coordpair[2]
+                                        new_crust_convergence[ixn,iyn] += crust_convergence[ix,iy] * 
+                                            areabox[iy] / area_neighbors
+                                        expanded_plate_blob[ixn,iyn] = 1
+                                    end
+                                    crust_convergence[ix,iy] = 0.
+                                else
+                                    new_crust_convergence[ix,iy] = crust_convergence[ix,iy]
+                                    crust_convergence[ix,iy] = 0.
+                                end
+                            end
+                        end
+                    end
+                end
+                crust_convergence .+= new_crust_convergence
+                plate_blob = deepcopy(expanded_plate_blob)
+                new_crust_convergence = fill(0.,nx,ny)
+                #println(" sub ", volume_field(crust_convergence))  
+            end 
+            #crust_convergence .+= new_crust_convergence
         end
+        #println(volume_field(crust_convergence))
     end
-    return orogenic_footprint
+    return crust_convergence
 end
+
 function active_orogenic_events()
     orogenic_event_names = ""
     for (name,orogenic_event) in orogenic_events
@@ -76,42 +170,184 @@ function active_orogenic_events()
     end
     return orogenic_event_names
 end
-function create_orogenic_event(name,onset,finish,altitude)
+function create_orogenic_event(name,onset,finish,uplift_rate_scale)
     worldfootprint = read_flip_csv("orogenies/" * name * ".csv")
     #plateIDmap = read_plateIDs(0.)
     #footprints = parse_world_footprint(worldfootprint,plateIDmap)
-    orogenic_event = orogenic_event_struct(name,worldfootprint,onset,finish,altitude)
+    orogenic_event = orogenic_event_struct(name,worldfootprint,onset,finish,uplift_rate_scale)
     return orogenic_event
 end
 function create_orogenies()
-    orogenic_base_uplift_rate = 7.5
     orogenic_events = Dict()
     orogenic_events["Pan_African"] =
-        create_orogenic_event("pan_african",650.,550.,orogenic_base_uplift_rate)  # africa, south america
+        create_orogenic_event("pan_african",650.,550.,1.)  # africa, south america
     orogenic_events["Avalonian"] =
-        create_orogenic_event("taconian",650.,500.,orogenic_base_uplift_rate)
+        create_orogenic_event("taconian",650.,500.,1.)
     orogenic_events["Taconian"] =
-        create_orogenic_event("taconian",490.,440.,3*orogenic_base_uplift_rate)
+        create_orogenic_event("taconian",490.,440.,3.)
     orogenic_events["Calcedonian/Acadian"] =
-        create_orogenic_event("calcedonian",460.,390.,orogenic_base_uplift_rate)
+        create_orogenic_event("calcedonian",460.,390.,1.)
     orogenic_events["Hercynian/Alleghenian/Uralian"] =
-        create_orogenic_event("hercynian",300.,250.,orogenic_base_uplift_rate) # = variscan
+        create_orogenic_event("hercynian",300.,250.,1.) # = variscan
     # Amurian (Japan) should be covered by subduction_orogeny
     orogenic_events["Indo Sinean"] =
-        create_orogenic_event("indo_sinean",200.,180.,0.5*orogenic_base_uplift_rate)
+        create_orogenic_event("indo_sinean",200.,180.,0.5)
     orogenic_events["Cimmerian"] =
-        create_orogenic_event("cimmerian",180.,150.,orogenic_base_uplift_rate)
+        create_orogenic_event("cimmerian",180.,150.,1.)
     orogenic_events["Mongol Okhotsk"] =
-        create_orogenic_event("mongol_okhotsk",140.,130.,orogenic_base_uplift_rate)
+        create_orogenic_event("mongol_okhotsk",140.,130.,1.)
     orogenic_events["Wrangellian"] =
-        create_orogenic_event("wrangellian",110.,80.,orogenic_base_uplift_rate)
+        create_orogenic_event("wrangellian",110.,80.,1.)
     orogenic_events["Verkhoyansk"] =
-        create_orogenic_event("verkhoyansk",100.,70.,orogenic_base_uplift_rate)
+        create_orogenic_event("verkhoyansk",100.,70.,1.)
     orogenic_events["Alpine"] =
-        create_orogenic_event("alpine",50.,0.,orogenic_base_uplift_rate)
+        create_orogenic_event("alpine",50.,0.,1.)
     orogenic_events["Himalayan"] =
-        create_orogenic_event("himalayan",40.,0.,orogenic_base_uplift_rate)
+        create_orogenic_event("himalayan",40.,0.,1.)
     return orogenic_events
+end
+function smooth_masked_field!( values, mask, diffcoeff )
+    # alters sed_fluxes
+    blobs = get_blobs( mask )
+    Threads.@threads for i_blob in 1:length(blobs)
+        #println("starting ",i_blob)
+        blob = blobs[i_blob]
+        smooth_area!( values, blob, diffcoeff )
+    end
+end
+function smooth_area!( values, blob, diffcoeff )
+    # alters sed_fluxes
+    if get_maskfield_census( blob ) > 1
+        list_pos = fill(0,nx,ny)
+        list_pos_filled = 0
+        list_x = []; list_y = []
+        for ix in 1:nx
+            for iy in 1:ny
+                if blob[ix,iy] == 1
+                    list_pos_filled += 1
+                    list_pos[ix,iy] = list_pos_filled
+                    push!( list_x, ix ); push!( list_y, iy )
+                end
+            end
+        end
+        A = spzeros( list_pos_filled, list_pos_filled )
+        for i_pos = 1:list_pos_filled
+            ix = list_x[i_pos]; iy = list_y[i_pos]
+                h_diffcoeffs = get_horizontal_diffcoeff(diffcoeff,iy)
+                v_diffcoeffs = get_vertical_diffcoeff(diffcoeff,iy)
+            #push!(original_values_list, in_field[ix,iy])
+            A[i_pos,i_pos] = 1.
+            if blob[ix_left(ix),iy] == 1 
+                A[i_pos,i_pos] += h_diffcoeffs[2] # left = -ve 
+                i_neighbor_pos = list_pos[ix_left(ix),iy]
+                A[i_pos,i_neighbor_pos] = - h_diffcoeffs[2] # only fill one direction
+            end
+            if blob[ix_right(ix),iy] == 1 
+                A[i_pos,i_pos] += h_diffcoeffs[1]
+                i_neighbor_pos = list_pos[ix_right(ix),iy]
+                A[i_pos,i_neighbor_pos] = - h_diffcoeffs[1]
+            end
+            if iy == 1
+                ixn = ( ix + 179 ) % 360 + 1
+                if blob[ixn,iy] == 1
+                    A[i_pos,i_pos] += v_diffcoeffs[2]
+                    i_neighbor_pos = list_pos[ixn,iy]
+                    A[i_pos,i_neighbor_pos] = - v_diffcoeffs[2]
+                end
+            else # iy > 1
+                if blob[ix,iy-1] == 1
+                    A[i_pos,i_pos] += v_diffcoeffs[2]
+                    i_neighbor_pos = list_pos[ix,iy-1]
+                    A[i_pos,i_neighbor_pos] = - v_diffcoeffs[2]
+                end
+            end
+            if iy == ny
+                ixn = ( ix + 179 ) % 360 + 1
+                if blob[ixn,iy] == 1
+                    A[i_pos,i_pos] += v_diffcoeffs[1]
+                    i_neighbor_pos = list_pos[ixn,iy]
+                    A[i_pos,i_neighbor_pos] = - v_diffcoeffs[1]
+                end
+            else # iy < ny
+                if blob[ix,iy+1] == 1
+                    A[i_pos,i_pos] += v_diffcoeffs[1]
+                    i_neighbor_pos = list_pos[ix,iy+1]
+                    A[i_pos,i_neighbor_pos] = - v_diffcoeffs[1]
+                end
+            end
+        end
+    
+        lu_A = lu(A)
+
+        #for i_sedtype in 0:n_sediment_types
+            #input_fraction_fluxes = 
+            #    get_frac_diag("seafloor_sediment_fraction_deposition_rate",i_sedtype)
+        R = Float64[]; 
+        for i_pos = 1:list_pos_filled
+            ix = list_x[i_pos]; iy = list_y[i_pos]
+            push!(R, values[ix,iy])
+        end
+        new_values_list = lu_A \ R
+        for i_pos = 1:list_pos_filled
+            ix = list_x[i_pos]; iy = list_y[i_pos]
+            values[ix,iy] = new_values_list[i_pos]
+            #set_frac_diag("seafloor_sediment_fraction_deposition_rate",
+            #    ix,iy,i_sedtype,new_values_list[i_pos])
+            #accum_diag("seafloor_sediment_deposition_rate",
+            #    ix,iy,new_values_list[i_pos])
+        end
+        #end
+    end # diffuse or no
+end
+function smooth_world!( values, diffcoeff )
+    # used for orogeny footprint
+    n_columns = nx * ny
+    A = spzeros( n_columns, n_columns )
+    for ix in 1:nx
+        for iy in 1:ny    
+            i_row = ix + ( iy - 1 ) * nx
+            h_diffcoeffs = get_horizontal_diffcoeff(diffcoeff,iy)
+            v_diffcoeffs = get_vertical_diffcoeff(diffcoeff,iy)
+
+            A[i_row,i_row] = 1.
+            # left
+            A[i_row,i_row] += h_diffcoeffs[2] # left = -ve 
+            i_neighbor_row = ix_left(ix) + ( iy - 1 ) * nx
+            A[i_row,i_neighbor_row] = - h_diffcoeffs[2] # only fill one direction
+            # right
+            A[i_row,i_row] += h_diffcoeffs[1]
+            i_neighbor_row = ix_right(ix) + ( iy - 1 ) * nx
+            A[i_row,i_neighbor_row] = - h_diffcoeffs[1]
+            if iy > 1
+                A[i_row,i_row] += v_diffcoeffs[2]
+                i_neighbor_row = ix + ( iy - 2 ) * nx
+                A[i_row,i_neighbor_row] = - v_diffcoeffs[2]
+            end
+            if iy < ny
+                A[i_row,i_row] += v_diffcoeffs[1]
+                i_neighbor_row = ix + ( iy ) * nx
+                A[i_row,i_neighbor_row] = - v_diffcoeffs[1]
+            end
+        end
+    end
+    
+    lu_A = lu(A)
+
+    R = fill(0.,n_columns)# Float64[]; 
+    for ix in 1:nx
+        for iy in 1:ny
+            i_row = ix + ( iy - 1 ) * nx
+            #push!(R, values[ix,iy])
+            R[i_row] = values[ix,iy]
+        end
+    end
+    new_values_list = lu_A \ R
+    for ix in 1:nx
+        for iy in 1:ny
+            i_row = ix + ( iy - 1 ) * nx
+            values[ix,iy] = new_values_list[i_row]
+        end
+    end
 end
 function smooth_orogeny(field)
     newfield = deepcopy(field)
@@ -131,24 +367,7 @@ function smooth_orogeny(field)
     end
     return newfield
 end
-function land_sediment_fraction_transport( new_elevation_field, 
-    subaereal_mask, 
-    sediment_sources, ocean_sink )
-    # sets land_sediment_fraction_deposition_rate on land areas
-    subaereal_blobs = get_blobs( subaereal_mask )
- 
-    #Threads.@threads 
-    for i_blob in 1:length(subaereal_blobs) 
-        #println("beginning ",i_blob)
-        subaereal_blob = subaereal_blobs[i_blob]
-        land_area_sediment_fraction_transport( 
-            new_elevation_field, 
-            subaereal_blob, sediment_sources, ocean_sink ) 
-        # sets land_sediment_fraction_deposition_rate on land points
-        #println("i_blob ",i_blob," ",
-        #    volume_field(get_frac_diag("land_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment,1]))
-    end 
-end
+
 function smooth_continental_crust_thickness( )
     crust_mask = eq_mask(world.crust_type,continent_crust)
     crust_blobs = get_blobs( crust_mask )
@@ -235,27 +454,175 @@ function generate_orogenic_erosion_fluxes()
     # doesnt need to accumulate since there will be no overlap of orogenic areas.
     # uses exposed_basement
     verbose = false
-    reset_diag("land_orogenic_clay_flux")
-    reset_diag("coastal_orogenic_clay_flux")
+    #reset_diag("land_orogenic_clay_flux")
+    #reset_diag("coastal_orogenic_clay_flux")
     orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
-        eq_mask( world.crust_type,continent_crust )
-    orogenic_blobs = get_blobs( orogenic_crust_mask )
-    orogenic_blob_areas = get_blob_areas( orogenic_blobs )
-    orogenic_production_rates = get_integrated_orogenic_production_rates( orogenic_blobs )
-    # fills crust_erosion_rate and crust_clay_source_rate, 
-    # returns blob-integrated rates in an array[nblobs]
-    neighbor_blobs = get_blob_neighbor_fields( orogenic_blobs )
+        is_land() 
+    orogenic_clay_flux = fill(0.,nx,ny)
+    for ix in 1:nx
+        for iy in 1:ny
+            if orogenic_crust_mask[ix,iy] == 1
+                orogenic_clay_flux[ix,iy] = 
+                    max( calculate_orogenic_erosion_rate( world.freeboard[ix,iy] ), 0. )
+            end
+        end
+    end
+    return orogenic_clay_flux
+end
+function get_denuded_sediment_fluxes()
+    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
+        is_land() 
+    denuded_sediment_fluxes = fill(0.,nx,ny,0:n_sediment_types)
+    for ix in 1:nx
+        for iy in 1:ny
+            if orogenic_crust_mask[ix,iy] == 1
+                for i_sedtype in 1:n_sediment_types
+                    denuded_sediment_fluxes[ix,iy,i_sedtype] = 
+                        world.sediment_thickness[ix,iy] * 
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] / time_step
+                    denuded_sediment_fluxes[ix,iy,0] += denuded_sediment_fluxes[ix,iy,i_sedtype]
+                end
+            end
+        end
+    end
+    return denuded_sediment_fluxes
+end
+function distribute_fluxes_uniformly_outside_boundary( fluxes, source_mask )
+    output_fluxes = fill( 0.,nx,ny,0:n_sediment_types )
+    blobs = get_blobs( source_mask )
+    blob_areas = get_blob_areas( blobs )
+    neighbor_blobs = get_blob_neighbor_fields( blobs )
     neighbor_blob_areas = get_blob_areas( neighbor_blobs )
-    for i_area in 1:length( orogenic_blobs )
+    for i_area in 1:length( blobs )
+        blob = blobs[ i_area ]
+        neighbor_blob = neighbor_blobs[i_area] 
+        if volume_field( fluxes[ :,:,0 ] .* blob ) > 0
+            #println("distributing blob ",i_area)
+            for i_sedtype in 1:n_sediment_types
+                integrated_flux = volume_field( fluxes[ :,:,i_sedtype ] .* blob )
+                deposition_rate = integrated_flux / neighbor_blob_areas[ i_area ]
+                output_fluxes[:,:,i_sedtype] += neighbor_blob .* deposition_rate
+                #=for ix in 1:nx
+                    for iy in 1:ny
+                        if neighbor_blobs[i_area][ix,iy] > 0
+                            output_fluxes[ix,iy,i_sedtype] = deposition_flux
+                        end
+                    end
+                end=#
+            end
+        end
+    end
+    update_flux_totals!( output_fluxes )
+    return output_fluxes
+end
+#=
+function expand_blob_boundary_subduction_to_fringe!( values, mask )
+    for ix in 1:nx
+        for iy in 1:ny
+            if mask[ix,iy] == 1 && values[ix,iy] > 0.
+                coordlist = get_border_neighbor_eq_size_coords(ix,iy)
+                filtered_coordlist = []
+                area_neighbors = 0.
+                for coordpair in coordlist
+                    ixn = coordpair[1]; iyn = coordpair[2]
+                    if mask[ix,iy] == 0
+                        push!( filtered_coordlist, coordpar )
+                        area_neighbors += areabox[iyn]
+                    end =#
+
+
+
+function distribute_fluxes_uniformly_inside_boundary( fluxes, source_mask )
+    output_fluxes = fill( 0.,nx,ny,0:n_sediment_types )
+    blobs = get_blobs( source_mask )
+    blob_areas = get_blob_areas( blobs )
+    neighbor_blobs = get_blob_neighbor_fields( blobs )
+    neighbor_blob_areas = get_blob_areas( neighbor_blobs )
+    for i_area in 1:length( blobs )
+        blob = blobs[ i_area ]
+        neighbor_blob = neighbor_blobs[i_area] 
+        if volume_field( fluxes[ :,:,0 ] .* blob ) > 0
+            #println("distributing blob ",i_area)
+            for i_sedtype in 1:n_sediment_types
+                integrated_flux = volume_field( fluxes[ :,:,i_sedtype ] .* blob )
+                deposition_rate = integrated_flux / neighbor_blob_areas[ i_area ]
+                output_fluxes[:,:,i_sedtype] += neighbor_blob .* deposition_rate
+                #=for ix in 1:nx
+                    for iy in 1:ny
+                        if neighbor_blobs[i_area][ix,iy] > 0
+                            output_fluxes[ix,iy,i_sedtype] = deposition_flux
+                        end
+                    end
+                end=#
+            end
+        end
+    end
+    update_flux_totals!( output_fluxes )
+    return output_fluxes
+end
+function distribute_fluxes_to_nearest_outside_boundary( fluxes, source_mask )
+    output_fluxes = fill( 0.,nx,ny,0:n_sediment_types )
+    blobs = get_blobs( source_mask )
+    blob_areas = get_blob_areas( blobs )
+    for i_area in 1:length( blobs )
+        blob = blobs[ i_area ]
+        if volume_field( fluxes[:,:,0] .* blob ) > 0.
+            blob_fringe_list = get_blob_fringe_exterior_list( blob )
+            ixn, iyn = find_nearest_fringe_point(ix,iy,blob_fringe_list)
+            for i_sedtype in 1:n_sediment_types
+                source_meter_flux = fluxes[ix,iy,i_sedtype]
+                source_volume_flux = source_meter_flux  *
+                    areabox[iy]
+                sink_meter_flux = source_volume_flux / areabox[iyn]
+                output_fluxes[ixn, iyn,i_sedtype] += 
+                    sink_meter_flux
+            end
+        end
+    end
+    update_flux_totals!( output_fluxes )
+    return output_fluxes
+end
+function update_flux_totals!(fluxfield)
+    fluxfield[:,:,0] .= 0.
+    for i_sedtype in 1:n_sediment_types
+        fluxfield[:,:,0] += fluxfield[:,:,i_sedtype]
+    end
+end
+#=
+                denuded_sediment_flux[ix,iy,i_sedtype] -= source_meter_flux
+                denuded_sediment_flux[ix,iy,0] -= source_meter_flux
+        for i_sedtype in 1:n_sediment_types
+            integrated_flux = volume_field( fluxes[ :,:,i_sedtype ] .* blob )
+            deposition_flux = integrated_flux / neighbor_blob_areas[ i_blob ]
+            for ix in 1:nx
+                for iy in 1:ny
+                    if neighbor_blobs[i_area][ix,iy] > 0
+                        output_fluxes[ix,iy,i_sedtype] = deposition_flux
+                    end
+                end
+            end
+        end
+    end
+    return output_fluxes
+end
+
+
+
+        orogenic_mass_flux = orogenic_production_rates[i_area] / # m3 / Myr
+            neighbor_blob_areas[i_area]  # meters / Myr
+        denuded_mass_flux = denuded_sediment_production_rates[i_area] / 
+            neighbor_blob_areas[i_area]
         for ix in 1:nx
             for iy in 1:ny
                 if neighbor_blobs[i_area][ix,iy] > 0
-                    massflux = orogenic_production_rates[i_area] / # m3 / Myr
-                        neighbor_blob_areas[i_area]  # meters / Myr
                     if world.geomorphology[ix,iy] == sedimented_land
-                        accum_diag("land_orogenic_clay_flux",ix,iy,massflux)
+                        accum_diag("land_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
                     elseif world.geomorphology[ix,iy] < sedimented_land # ocean
-                        accum_diag("coastal_orogenic_clay_flux",ix,iy,massflux)
+                        accum_diag("coastal_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
+                    end
+                    for i_sedtype in 1:n_sediment_types
+                        accum_frac_diag("denuded_land_boundary_fraction_flux",
+                            ix,iy,i_sedtype,denuded_mass_flux)
                     end
                 end
             end
@@ -269,7 +636,55 @@ function generate_orogenic_erosion_fluxes()
         println(" area ",orogenic_area," avg elevation ",avg_oro_elev,
             " clay src ", crust_clay_source)
     end
-    return
+end
+=#
+function generate_orogenic_erosion_fluxes_original()
+    # resets then accumulates land_orogenic_clay_flux and coastal_orogenic_clay_flux
+    # also sets cruse_erosion_rate,
+    # doesnt need to accumulate since there will be no overlap of orogenic areas.
+    # uses exposed_basement
+    verbose = false
+    reset_diag("land_orogenic_clay_flux")
+    reset_diag("coastal_orogenic_clay_flux")
+    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
+        eq_mask( world.crust_type,continent_crust )
+    orogenic_blobs = get_blobs( orogenic_crust_mask )
+    orogenic_blob_areas = get_blob_areas( orogenic_blobs )
+    orogenic_production_rates = get_integrated_orogenic_production_rates( orogenic_blobs )
+    denuded_sediment_production_rates = get_integrated_denuded_sediment_rates( orogenic_blobs )
+    # fills crust_erosion_rate and crust_clay_source_rate, 
+    # returns blob-integrated rates in an array[nblobs]
+    neighbor_blobs = get_blob_neighbor_fields( orogenic_blobs )
+    neighbor_blob_areas = get_blob_areas( neighbor_blobs )
+    for i_area in 1:length( orogenic_blobs )
+        orogenic_mass_flux = orogenic_production_rates[i_area] / # m3 / Myr
+            neighbor_blob_areas[i_area]  # meters / Myr
+        denuded_mass_flux = denuded_sediment_production_rates[i_area] / 
+            neighbor_blob_areas[i_area]
+        for ix in 1:nx
+            for iy in 1:ny
+                if neighbor_blobs[i_area][ix,iy] > 0
+                    if world.geomorphology[ix,iy] == sedimented_land
+                        accum_diag("land_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
+                    elseif world.geomorphology[ix,iy] < sedimented_land # ocean
+                        accum_diag("coastal_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
+                    end
+                    for i_sedtype in 1:n_sediment_types
+                        accum_frac_diag("denuded_land_boundary_fraction_flux",
+                            ix,iy,i_sedtype,denuded_mass_flux)
+                    end
+                end
+            end
+        end
+    end
+    if verbose == true
+        orogenic_area = volume_field(orogenic_crust_mask)
+        avg_oro_elev = field_mean( world.freeboard .* orogenic_crust_mask )
+        crust_clay_source = volume_field(get_diag("land_orogenic_clay_flux")) +
+            volume_field(get_diag("coastal_orogenic_clay_flux"))
+        println(" area ",orogenic_area," avg elevation ",avg_oro_elev,
+            " clay src ", crust_clay_source)
+    end
 end
 
 function orogeny_intensity(uplift)
@@ -283,7 +698,7 @@ function orogeny_intensity(uplift)
     end
     return total
 end
-function orogenic_erosion_rate( freeboard ) # meters / Myr
+function calculate_orogenic_erosion_rate( freeboard ) # meters / Myr
 #= 
     initial_tau = 100; longterm_tau = 250.; cutoff_elevation = 2000.
     if freeboard > cutoff_elevation
@@ -297,40 +712,36 @@ function orogenic_erosion_rate( freeboard ) # meters / Myr
     erosion_rate = freeboard / tau
     return erosion_rate # meters of crust / Myr
 end        
-function get_integrated_orogenic_production_rates( orogenic_blobs ) # m3 sediment / Myr
+
+function get_integrated_denuded_sediment_rates( orogenic_blobs )
+    denuded_sediment = get_frac_diag("denuded_sediment_source_fraction_flux")
+    n_orogenies = length(orogenic_blobs)
+    area_rates_by_blob = []
+    for i_area = 1:n_orogenies
+        blob = orogenic_blobs[i_area]
+        rates_by_type = []
+        for i_sedtype in 1:n_sediment_types
+            total_sediment_type_source = volume_field( 
+                denuded_sediment[:,:,i_sedtype] .* blob )
+            push!( rates_by_type, total_sediment_type_source )
+        end
+        push!( area_rates_by_blob, rates_by_type )
+    end
+    return area_rates_by_blob
+end
+
+function get_integrated_orogenic_production_rates_unused_I_wonder( orogenic_blobs ) # m3 sediment / Myr
     # fills crust_erosion_rate and crust_clay_source_rate, 
     # returns blob-integrated rates in an array[nblobs]
     n_orogenies = length(orogenic_blobs)
-    total_sediment_thickness = world.sediment_thickness
     area_rates = []
     for i_area = 1:n_orogenies
         crust_erosion_field = fill(0.,nx,ny)
         for ix in 1:nx
             for iy in 1:ny
                 if orogenic_blobs[i_area][ix,iy] == 1
-                    crust_erosion_rate = orogenic_erosion_rate(world.freeboard[ix,iy]) # meters / Myr
+                    crust_erosion_rate = calculate_orogenic_erosion_rate(world.freeboard[ix,iy]) # meters / Myr
                     crust_erosion_field[ix,iy] = crust_erosion_rate
-                    #=
-                    if total_sediment_thickness[ix,iy] > 0. # presumably recently exposed, leftover
-                        # pays off negative sediment debt if any
-                        #world.tectonics[ix,iy] = land_soil_denuded_with_excess
-                        sediment_source_rate = total_sediment_thickness[ix,iy] / 
-                            time_step # meters / Myr
-                        world.sediment_thickness[ix,iy] = 0.
-                        world.sediment_layer_thickness[ix,iy,:] .= 0.
-                        # turned this off because its already getting there thru dispersion of erosion
-                        #= for i_sedfrac in 1:n_sediment_types
-                            fraction = world.sediment_fractions[ix,iy,i_sedfrac]
-                            set_frac_diag("land_sediment_fraction_deposition_rate",ix,iy,i_sedfrac,
-                                - sediment_source_rate * fraction )
-                        end =#
-                        # get rid of leftover sediment through proper channels
-                        crust_erosion_field[ix,iy] += sediment_source_rate * 
-                            rho_sediment / rho_continent_crust # meters crust / Myr
-                        # add it to crust_erosion which will be converted back to sediment
-                        # and added to the orogenic source
-                    end
-                    =#
                     set_diag("crust_erosion_rate",ix,iy,crust_erosion_rate ) # meters crust / Myr
                     set_diag("crust_clay_source_rate",ix,iy,crust_erosion_rate *
                         rho_continent_crust / rho_sediment )

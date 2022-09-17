@@ -7,30 +7,13 @@ mutable struct rotation_struct
     angle
     parent
 end
-mutable struct plate_struct
-    plateID         # scalar, from gplates rotation file
-    crust_type       # 2d arrays
-    crust_age
-    crust_thickness
-    crust_density
-    tectonics
-    sediment_thickness  # geologic record, dimensions of x,y
-    sediment_surface_fractions # x,y,sed type 
-    sediment_layer_thickness # x,y,time_bins, not used on land points
-    sediment_layer_fractions  # x, y, sed type, time_bin
-    rotationmatrix  # 3x3 heirarchy-resolved rotation matrix
-    resolvetime
-    parentstack     # list of parents at last resolve time
-    lastparentstack
-    firstappearance
-    lastappearance
-end
+
 mutable struct orogenic_event_struct
     name
     footprint
     onset
     finish
-    altitude
+    uplift_scale
 end
 mutable struct world_struct
     # create and manipulate a global world for snapshot composite view of rotated plates
@@ -38,7 +21,7 @@ mutable struct world_struct
     sealevel
     plateID         # pertaining to plate tectonics
     plateIDlist
-    crust_type      # beginning of the 9 state variables
+    crust_type      # beginning of the 10 state variables
     crust_age
     crust_thickness # pertaining to geomorphology
     crust_density
@@ -54,19 +37,37 @@ mutable struct world_struct
     diags
     frac_diags
 end
-
+mutable struct plate_struct
+    plateID         # scalar, from gplates rotation file
+    crust_type       # beginning of the 10 state variables
+    crust_age
+    crust_thickness
+    crust_density
+    geomorphology
+    tectonics
+    sediment_thickness  # geologic record, dimensions of x,y
+    sediment_surface_fractions # x,y,sed type 
+    sediment_layer_thickness # x,y,time_bins, not used on land points
+    sediment_layer_fractions  # x, y, sed type, time_bin
+    rotationmatrix  # 3x3 heirarchy-resolved rotation matrix
+    resolvetime
+    parentstack     # list of parents at last resolve time
+    lastparentstack
+    firstappearance
+    lastappearance
+end
 # diagnostics variable system
 world_diag_names = ["ocean_created_plate_area",
     "continent_2_ocean_plate_area",
     "continent_2_ocean_sediment_leak",
     "continent_created_plate_area",
     "ocean_2_continent_plate_area",
-    "ocean_2_continent_sediment_leak",
-    "ocean_subduct_plate_area",
+    "ocean_subduct_plate_thickness",
     "ocean_subduct_age_plate_area",
-    "ocean_subduct_sediment_volume",
-    "continent_subduct_plate_area",
-    "continent_subduct_sediment_volume",
+    "ocean_subduct_age_thickness",
+    "ocean_subduct_sediment_thickness",
+    "continent_subduct_plate_thickness",
+    "continent_subduct_sediment_thickness",
     "ocean_2_continent_world_area",
     "continent_2_ocean_world_area",
     "continent_initialization_sediment_volume",
@@ -89,11 +90,15 @@ world_diag_names = ["ocean_created_plate_area",
     "pelagic_CaCO3_deposition_rate",
     "seafloor_delta_CO3"]
 world_frac_diag_names = [
-    "ocean_subduct_sediment_fraction_volume",
-    "continent_subduct_sediment_fraction_volume",
+    "ocean_subduct_sediment_fraction_thickness",
+    "continent_subduct_sediment_fraction_thickness",
     "continent_initialization_sediment_fraction_volume",
     "continent_2_ocean_sediment_fraction_leak",
-    "ocean_2_continent_sediment_fraction_leak",
+    "ocean_2_continent_sediment_fraction_displaced",
+    "continent_2_ocean_sediment_fraction_displaced",
+    "denuded_sediment_source_fraction_flux",
+    "denuded_land_boundary_fraction_flux",
+    "denuded_coastal_boundary_fraction_flux",
     "land_sediment_fraction_deposition_rate",
     "land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
@@ -106,14 +111,18 @@ world_frac_diag_names = [
 
 # grid 
 nx = 360; ny = 180
-zoomplot_ix = 190; zoomplot_iy = 130; zoomplot_size = 20
+zoomplot_ix = 60; zoomplot_iy = 120; zoomplot_size = 20
+#plot_resolution_x = 3000; plot_resolution_y = 1800
+plot_resolution_x = 1600; plot_resolution_y = 1000
 xcoords = collect(-180. + 180/nx: 360/nx: 180. - 180/nx)
 ycoords = collect(-90. + 180/nx: 360 / nx: 90. - 180/nx)
 areabox = fill(0.,ny)
 delta_x = fill(0.,ny); delta_y = 110.e3
+n_equiv_boxes = fill(1,ny)
 for iy in 1:ny
     areabox[iy] = 110. * 110. * cos(ycoords[iy] / 180. * pi)  * 1e6 # m2
     delta_x[iy] = 110.e3 * cos(ycoords[iy] / 180. * pi) # m
+    n_equiv_boxes[iy] = Int(floor(delta_y / delta_x[iy]))
 end
 shelf_depth_clastics = -100.; shelf_depth_CaCO3 = -10.
 
@@ -139,6 +148,7 @@ ocean_to_continent = 3 # set in update_world_continents_from_file()
 continent_to_ocean = 4
 subducting_ocean_crust = 5
 subducting_continent_crust = 6
+burying_land = 7
 
 # plate.tectonics, maps of plate transformations
 not_yet_defined = -1
@@ -158,10 +168,11 @@ n_sediment_types = length(sediment_type_names)
 initial_sediment_type = clay_sediment 
 initial_land_sediment_thickness = 1.; initial_ocean_sediment_thickness = 1.
 
-# time 
-earliesttime = 300.
-time_step = 2. # Myr
-sediment_record_resolution = 10.
+# Time 
+earliesttime = 550.
+time_step = 1. # Myr
+sub_time_step = 1.
+sediment_record_resolution = 20.
 sediment_time_bins = Float32[  ]
 for atime in range( earliesttime, step = -sediment_record_resolution, stop = 0.)
     push!( sediment_time_bins, atime )
@@ -176,9 +187,44 @@ geo_interval_names = [ "Cambrian", "Ordovician", "Silurian", "Devonian",
     "Carboniferous","Permian","Triassic","Jurassic","Cretaceous",
     "Paleocene","Eocene","Oligocene","Miocene","Pliocene","Pleistocene"]
 
-code_base_directory = "/Users/archer/Synched/papers/spongeball/codebase"
-animation_output_directory = "/Users/archer/Synched/papers/spongeball/animations/"
-data_output_directory = "/Users/archer/Synched/papers/spongeball/outfiles"
+base_directory = "/Users/archer/Synched/papers/spongeball"
+code_base_directory = "codebase"
+output_directory = "outfiles." 
+output_tag = "friday_1myr"
+animation_directory = "animations"
+world_directory = "world"
+plate_directory = "plates"
+charts_directory = "charts"
+scotese_data_directory = "scotese_elevation_files"
+animation_directories = ["elevation","pct_CaCO3","crust_age","sed_thickness","scotese_elevation"]
+animation_n_step = 1
+animation_initial_age = earliesttime; animation_final_age = 0
+save_plate_transplants_image_number = 0
+
+# configuration
+enable_land_runoff = true
+enable_aolean_transport = true
+enable_cont_update_from_files = true
+enable_crust_cont2ocn = true
+enable_crust_ocn2cont = true
+enable_orogeny = true
+eliminate_regrid_drift = true
+enable_eyeball_changing_plateIDs = true
+#enable_watch_plate_transplant_misses = false
+enable_watch_plate_transplants = false
+enable_save_plate_transplant_images = false
+enable_watch_denuding_landscape = false
+enable_watch_remask_plates_errors = false
+enable_remask_plate_diagnostics = false
+enable_changing_plateID_diagnostics = false
+enable_step_tectonics_world_diagnostics = true
+enable_step_tectonics_plate_diagnostics = false
+enable_watch_orogeny_substeps = false
+enable_check_sediment_layer_inventory = false
+enable_step_everything_diagnostics = true
+enable_step_geomorph_diagnostics = false
+enable_distribute_ocean_fluxes_diagnostics = true
+enable_watch_ocean_offshore_transport = false
 
 # geophysics parameters
 continent_crust_h0 = 16500.; continent_crust_h0_max = 35000.
@@ -191,19 +237,36 @@ mantle_T0 = 2000.
 ocean_T0 = 0.
 
 # geomorphology parameters
-land_base_diffcoeff = 1.e5
-seafloor_base_diffcoeff = 3.e4 # m2 / yr
+orogeny_smooth_coeff = 1000. 
 crust_smooth_coeff = 1.e4
+orogenic_base_uplift_meters = 2.e4 # from 16 -> 35 km through the event
+orogenic_uplift_parameter = 1.
+subduction_orogeny_parameter = 4000. 
+subduction_orogeny_smooth_coeff = 5000.
+subduction_orogeny_hor_offset = 10 * delta_y
+mountain_max_altitude_target = 10.e3 # m
+max_uplift_rate_target = 600. # m / Myr
+mean_elevation_land_target = 800. # m
+orogenic_area_fraction_target = 0.1
+orogenic_area_width = 1.e6 # m
+orogenic_erosion_tau_apparent = mountain_max_altitude_target / 
+    max_uplift_rate_target # Myr
+land_base_diffcoeff = max_uplift_rate_target * 
+    orogenic_area_width * orogenic_area_fraction_target * 
+    orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
+
+if enable_aolean_transport
+    aolean_erosion_rate_constant = 1. / 2000. # Myr
+else
+    aolean_erosion_rate_constant = 0.
+end
 land_CaCO3_dissolving_altitude = 10. # meters
 land_CaCO3_dissolution_rate = 0. # meters/Myr
-# 1000 meters dissolves in 100 Myr
-orogenic_base_uplift_rate = 7.5 # m / Myr
-subduction_orogeny_parameter = 2.e-8 # small because mult by area
-aolean_erosion_rate_constant = 1. / 2000. # Myr
-orogenic_erosion_tau_apparent = 200. # Myr
+seafloor_base_diffcoeff = 3.e4 # m2 / yr
+
 
 # CaCO3 parameters
 global_CO2_degassing_rate = 7.5E12 # mol / yr
 global_terrestrial_CaCO3_dissolution_rate = 100.E15 / 100. / 1000.
 #                                       g CaCO3/kyr mol/yr   mol/yr
-CaCO3_deposition_lat_scale = 45.
+CaCO3_deposition_lat_scale = 30.

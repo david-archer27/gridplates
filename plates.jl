@@ -302,8 +302,11 @@ function resolve_rotation_matrices()
     #    println("  Updating rotations to ", age)
     for plateID in world.plateIDlist
         if haskey(plates,plateID) == false
-            println("creating plate in resolve_rotation_matrices ",plateID)
+            println("    creating plate in resolve_rotation_matrices ",plateID)
             plates[plateID] = create_blank_plate(plateID)
+            resolve_rotation_matrix!(plateID,world.age)
+            initial_mask_plate!(plates[plateID])
+    
         end
         if plates[plateID].resolvetime != world.age
             if plates[plateID].resolvetime != -1
@@ -323,8 +326,7 @@ function fill_world_from_plates()
     # project plate crust* and sediment* variables to world grid.
     # leaves world.geomorphology and surface_type_changes alone
 
-    #Threads.@threads 
-    for iworld in 1:nx
+    Threads.@threads for iworld in 1:nx
         for jworld in 1:ny
             plateID = world.plateID[iworld,jworld]
             if plateID != -1 && haskey(plates,plateID)
@@ -343,23 +345,31 @@ function fill_world_from_plates()
                     world.crust_thickness[iworld,jworld] = ocean_crust_h0
                     world.crust_density[iworld,jworld] = rho_ocean_crust
                     world.geomorphology[iworld,jworld] = pelagic_seafloor
+                    world.tectonics[iworld,jworld] = new_ocean_crust
                     world.sediment_thickness[iworld,jworld] = 0.
                     world.sediment_surface_fractions[iworld,jworld,:] .= 0.
                     world.sediment_surface_fractions[iworld,jworld,initial_sediment_type] = 1.
                     world.sediment_layer_thickness[iworld,jworld,:] .= 0.
                     world.sediment_layer_fractions[iworld,jworld,:,:] .= 0.
                 else
-                    world.crust_age[iworld,jworld] = plate.crust_age[iplate,jplate]
                     world.crust_type[iworld,jworld] = plate.crust_type[iplate,jplate]
-                    if world.crust_type[iworld,jworld] == continent_crust
-                        world.geomorphology[iworld,jworld] = sedimented_land
-                    else
-                        world.geomorphology[iworld,jworld] = pelagic_seafloor
-                    end
+                    world.crust_age[iworld,jworld] = plate.crust_age[iplate,jplate]
                     world.crust_thickness[iworld,jworld] =
                         plate.crust_thickness[iplate,jplate]
                     world.crust_density[iworld,jworld] =
                         plate.crust_density[iplate,jplate]
+                    world.geomorphology[iworld,jworld] = 
+                        plate.geomorphology[iplate,jplate]
+                    if plate.geomorphology[iplate,jplate] == exposed_basement
+                        world.geomorphology[iworld,jworld] = sedimented_land
+                    end # start over for the land diffusion calculation
+
+                    #if plate.geomorphology[iplate,jplate] == 0
+                    #    println("zero plate geomorph ",[plate.plateID,plate.crust_type[iplate,jplate]])
+                    #end
+                    
+                    #world.tectonics[iworld,jworld] = # unset because tectonics gets reset in world,
+                    #    plate.tectonics[iplate,jplate] # no need for memory of last time step
                     world.sediment_thickness[iworld,jworld] = 
                         plate.sediment_thickness[iplate,jplate]                        
                     world.sediment_surface_fractions[iworld,jworld,:] .=
@@ -384,13 +394,17 @@ function initial_mask_plate!(plate)
                     world.crust_thickness[iworld,jworld]
                 if world.crust_type[iworld,jworld] == ocean_crust
                     plate.crust_density[iplate,jplate] = rho_ocean_crust
+                    plate.geomorphology[iplate,jplate] = pelagic_seafloor
                     plate.sediment_thickness[iplate,jplate] = initial_ocean_sediment_thickness
                     plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
                     plate.sediment_layer_thickness[iplate,jplate,1] = initial_ocean_sediment_thickness
                     plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
                     plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
+                    plate.sediment_layer_fractions[iplate,jplate,:,:] .= 0.
+                    plate.sediment_layer_fractions[iplate,jplate,initial_sediment_type,:] .= 1.
                 else # must be a continent
                     plate.crust_density[iplate,jplate] = rho_continent_crust
+                    plate.geomorphology[iplate,jplate] = sedimented_land
                     plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
                     plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
                     plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
@@ -409,214 +423,295 @@ function initial_mask_plate!(plate)
 end
 
 function remask_plate!(plate)
-    # one stop shop to initialize, update, and delete plate points.
+    # initialize, update, and delete plate points.
     # finds grid points of subduction and crust creation on plate fields.
     # imports crust_thickness as it stands in world grid.
-    # when a plate point starts corresponding to a continent point in world
-    # it gets the world crust_thickness etc, before orogeny due to the current
-    # step.
+
     age = world.age
     if plate.resolvetime != age
         resolve_rotation_matrix!(plate.plateID,age)
     end
-    if min_max_field(plate.crust_type)[1] == not_yet_defined
-        println("undefined plate grid ", plate.plateID)
-        initial_mask_plate!(plate)
+
+    iplates = fill(0,nx,ny); jplates = fill(0,nx,ny)
+    rotated_crust_type = fill(0.,nx,ny)  # plate projected onto world grid
+    cropped_rotated_crust_type = fill(0.,nx,ny)   #  still outcrop
+    subducted_crust_type = fill(0.,nx,ny)     # not there any more
+
+    rotated_sediment_thickness = fill(0.,nx,ny)
+    cropped_rotated_sediment_thickness = fill(0.,nx,ny)
+    subducted_sediment_thickness = fill(0.,nx,ny)
+
+    rotated_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    cropped_rotated_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    subducted_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+
+    rotated_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    cropped_rotated_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+    subducted_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
+
+    rotated_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
+    cropped_rotated_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
+    subducted_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
+
+    initial_plate_crust_areas = [0.,0.]
+    initial_plate_sediment_volume = 0.
+    rotated_plate_crust_areas = [0.,0.]
+    rotated_sediment_volume = 0.
+    subducted_plate_crust_areas = [0.,0.]
+    subducted_sediment_volume = 0.
+    cropped_rotated_plate_crust_areas = [0.,0.]
+    cropped_rotated_sediment_volume = 0.
+    init_sub = [0.,0.]
+    area_imbalances = [0.,0.]
+    inv_imbalance = 0.
+
+    #backrotated_cropped_rotated_crust_type = fill(0.,nx,ny) # conservation test fwiw
+    #backrotated_cropped_rotated_sediment_thickness = fill(0.,nx,ny)
+    #backrotated_cropped_rotated_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+
+    for iworld in 1:nx # construct rotated entire plate for bookkeeping 
+        for jworld in 1:ny 
+            iplates[iworld,jworld],jplates[iworld,jworld] = 
+                nearest_plateij(plate.rotationmatrix,iworld,jworld)
+            iplate = iplates[iworld,jworld]; jplate = jplates[iworld,jworld]
+
+            rotated_crust_type[iworld, jworld] = plate.crust_type[iplate,jplate]
+            rotated_sediment_thickness[iworld, jworld] = 
+                plate.sediment_thickness[iplate,jplate]
+            rotated_sediment_surface_fractions[iworld, jworld,:] = 
+                plate.sediment_surface_fractions[iplate,jplate,:]
+            rotated_sediment_layer_thickness[iworld, jworld,:] = 
+                plate.sediment_layer_thickness[iplate,jplate,:]
+            rotated_sediment_layer_fractions[iworld, jworld,:,:] = 
+                plate.sediment_layer_fractions[iplate,jplate,:,:]
+
+            if world.plateID[iworld,jworld] == plate.plateID
+                cropped_rotated_crust_type[iworld, jworld] = 
+                    rotated_crust_type[iworld, jworld]
+                cropped_rotated_sediment_thickness[iworld, jworld] = 
+                    rotated_sediment_thickness[iworld, jworld]
+                cropped_rotated_sediment_surface_fractions[iworld, jworld,:] = 
+                    rotated_sediment_surface_fractions[iworld, jworld,:]
+                cropped_rotated_sediment_layer_thickness[iworld, jworld,:] = 
+                    rotated_sediment_layer_thickness[iworld, jworld,:]
+                cropped_rotated_sediment_layer_fractions[iworld, jworld,:,:] = 
+                    rotated_sediment_layer_fractions[iworld, jworld,:,:]
+            else  
+                subducted_crust_type[iworld, jworld] = 
+                    rotated_crust_type[iworld, jworld]
+                subducted_sediment_thickness[iworld, jworld] = 
+                    rotated_sediment_thickness[iworld, jworld]
+                subducted_sediment_surface_fractions[iworld, jworld,:] = 
+                    rotated_sediment_surface_fractions[iworld, jworld,:]
+                subducted_sediment_layer_thickness[iworld, jworld,:] = 
+                    rotated_sediment_layer_thickness[iworld, jworld,:]
+                subducted_sediment_layer_fractions[iworld, jworld,:,:] = 
+                    rotated_sediment_layer_fractions[iworld, jworld,:,:]
+            end
+        end
     end
+    #subducted_ocean_crust = eq_mask(subducted_crust_type,ocean_crust)
+    #extended_subduction_ring = expand_blob_boundary_values_to_fringe(subducted_ocean_crust)
+
+    initial_plate_crust_areas = [ volume_field(eq_mask(plate.crust_type,continent_crust)), 
+        volume_field(eq_mask(plate.crust_type,ocean_crust)) ]
+    initial_plate_sediment_volume = volume_field(plate.sediment_thickness)
+    subducted_plate_crust_areas = [ volume_field(eq_mask(subducted_crust_type,continent_crust)), 
+        volume_field(eq_mask(subducted_crust_type,ocean_crust)) ]
+    subducted_sediment_volume = volume_field(subducted_sediment_thickness)
+
+    if enable_remask_plate_diagnostics
+        println("inital ", initial_plate_crust_areas, " ", initial_plate_sediment_volume)
+
+        rotated_plate_crust_areas = [ volume_field(eq_mask(rotated_crust_type,continent_crust)), 
+            volume_field(eq_mask(rotated_crust_type,ocean_crust)) ]
+        rotated_sediment_volume = volume_field(rotated_sediment_thickness)
+        println("  rot ", rotated_plate_crust_areas, " ", rotated_sediment_volume)
+        println("  chg ", rotated_plate_crust_areas .- initial_plate_crust_areas, 
+            " ", rotated_sediment_volume .- initial_plate_sediment_volume )
+
+        println("  sub ", subducted_plate_crust_areas, " ", subducted_sediment_volume)
+
+        cropped_rotated_plate_crust_areas = [ volume_field(eq_mask(cropped_rotated_crust_type,continent_crust)), 
+            volume_field(eq_mask(cropped_rotated_crust_type,ocean_crust)) ]
+        cropped_rotated_sediment_volume = volume_field(cropped_rotated_sediment_thickness)
+        println("  rem ", cropped_rotated_plate_crust_areas, " ", cropped_rotated_sediment_volume)
+        println("  sum ", subducted_plate_crust_areas .+ cropped_rotated_plate_crust_areas, " ", 
+            subducted_sediment_volume + cropped_rotated_sediment_volume)
+
+        #plate_subducted_sediment_volume = fill(0.,nx,ny,0:n_sediment_types)
+        init_sub = volume_fields( get_frac_diag("ocean_subduct_sediment_fraction_thickness") .+ 
+            get_frac_diag("continent_subduct_sediment_fraction_thickness") )
+    end
+
+    for iworld in 1:nx # subduction bookkeeping on world grid 
+        for jworld in 1:ny 
+            iplate = iplates[iworld,jworld]; jplate = jplates[iworld,jworld]
+            if plate.crust_type[iplate,jplate] > not_at_surface && world.plateID[iworld,jworld] != plate.plateID
+                if subducted_crust_type[iworld,jworld] == ocean_crust
+                    accum_diag("ocean_subduct_plate_thickness",iworld,jworld,
+                        areabox[jplate] / areabox[jworld] / time_step )
+                    accum_diag("ocean_subduct_age_thickness",iworld,jworld,
+                        plate.crust_age[iplate,jplate] * 
+                        areabox[jplate] / areabox[jworld] / time_step )
+                    for ibin in 1:n_sediment_time_bins # sediment record in the layers
+                        accum_diag("ocean_subduct_sediment_thickness",iworld,jworld,
+                            subducted_sediment_layer_thickness[iworld,jworld,ibin] / time_step )
+                        for i_sedtype in 1:n_sediment_types
+                            flux_amt = subducted_sediment_layer_thickness[iworld,jworld,ibin] *
+                                subducted_sediment_layer_fractions[iworld,jworld,i_sedtype,ibin]
+                            accum_frac_diag("ocean_subduct_sediment_fraction_thickness",iworld,jworld,
+                                i_sedtype, flux_amt / time_step )
+                        end
+                    end
+                elseif subducted_crust_type[iworld,jworld] == continent_crust
+                    accum_diag("continent_subduct_plate_thickness",iworld,jworld, 
+                        areabox[jplate] / areabox[jworld] / time_step )
+                    #set_diag("continent_subduct_age_plate_area",iworld,jworld,
+                    #    1. / time_step * 
+                    #    plate.crust_age[iplate,jplate])
+                    accum_diag("continent_subduct_sediment_thickness",iworld,jworld,
+                        subducted_sediment_thickness[iworld,jworld] * 
+                        areabox[jplate] / areabox[jworld] / time_step )
+                    for i_sedtype in 1:n_sediment_types
+                        flux_amt = subducted_sediment_thickness[iworld,jworld] *
+                            subducted_sediment_surface_fractions[iworld,jworld,i_sedtype]
+                        accum_frac_diag("continent_subduct_sediment_fraction_thickness",iworld,jworld,
+                            i_sedtype, flux_amt  * 
+                            areabox[jplate] / areabox[jworld] / time_step )
+                    end
+                end
+            end
+        end
+    end
+
+    if enable_remask_plate_diagnostics
+        done_sub = volume_fields( get_frac_diag("ocean_subduct_sediment_fraction_thickness") .+ 
+            get_frac_diag("continent_subduct_sediment_fraction_thickness") )
+        #plate_mask = eq_mask(world.plateID,plate.plateID)
+        sub_vol_check = ( done_sub .- init_sub ) .* time_step
+
+        println(" subchk ", [sub_vol_check[1] + sub_vol_check[2],sub_vol_check[1], sub_vol_check[2]])
+    end
+
     for iplate in 1:nx
         for jplate in 1:ny
             iworld, jworld = nearest_worldij(plate.rotationmatrix,iplate,jplate)
             if world.plateID[iworld,jworld] == plate.plateID
-            # plate point outcrops here in the world grid
-
-                if world.crust_type[iworld,jworld] == ocean_crust
-
-                    if plate.crust_type[iplate,jplate] == not_at_surface
-                    # ridge spreading
-
-                        accum_diag("ocean_created_plate_area",iworld,jworld,
-                            areabox[jplate] / areabox[jworld])
-
-                        world.tectonics[iworld,jworld] = new_ocean_crust
-                        plate.tectonics[iplate,jplate] = new_ocean_crust
-
-                        plate.crust_age[iplate,jplate] = 0. # new ocean crust
-                        plate.crust_type[iplate,jplate] = ocean_crust
-                        plate.crust_thickness[iplate,jplate] = ocean_crust_h0
+                if plate.crust_type[iplate,jplate] <= not_at_surface
+                    plate.crust_type[iplate,jplate] = world.crust_type[iworld,jworld]
+                    plate.crust_age[iplate,jplate] = 0.
+                    plate.crust_thickness[iplate,jplate] =
+                    world.crust_thickness[iworld,jworld]
+                    if world.crust_type[iworld,jworld] == ocean_crust
                         plate.crust_density[iplate,jplate] = rho_ocean_crust
-                        plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
-                        # so that there should be no exceptions to sum fractions = 1.
-                    elseif plate.crust_type[iplate,jplate] == continent_crust
-                    # continent demoted to ocean type
-
-                        plate.sediment_layer_thickness[iplate,jplate,current_time_bin()] =
-                            plate.sediment_thickness[iplate,jplate]
-                        plate.sediment_layer_fractions[iplate,jplate,:,current_time_bin()] .=
-                            plate.sediment_surface_fractions[iplate,jplate,:]
-                        accum_diag("continent_2_ocean_plate_area",iworld,jworld,
-                            areabox[jplate] / areabox[jworld])
-                        #=
-                        accum_diag("continent_2_ocean_sediment_leak",iworld,jworld,
-                            - plate.sediment_thickness[iplate,jplate] * areabox[jplate] / areabox[jworld])
-                        # loss of continental sediment = negative leak
-                        for i_sedtype in 1:n_sediment_types
-                            accum_frac_diag("continent_2_ocean_sediment_fraction_leak",
-                                iworld,jworld,i_sedtype,
-                                - plate.sediment_thickness[iplate,jplate] * 
-                                plate.sediment_surface_fractions[iplate,jplate,i_sedtype] *
-                                areabox[jplate] / areabox[jworld])
-                        end =#
-
-                        world.tectonics[iworld,jworld] = continent_to_ocean
-                        plate.tectonics[iplate,jplate] = continent_to_ocean
-
-                        plate.crust_age[iplate,jplate] = 0. # new ocean crust
-                        plate.crust_type[iplate,jplate] = ocean_crust
-                        plate.crust_thickness[iplate,jplate] = ocean_crust_h0
-                        plate.crust_density[iplate,jplate] = rho_ocean_crust
-                        plate.sediment_thickness[iplate,jplate] = 0.
+                        plate.geomorphology[iplate,jplate] = pelagic_seafloor
+                        plate.sediment_thickness[iplate,jplate] = initial_ocean_sediment_thickness
+                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
+                        plate.sediment_layer_thickness[iplate,jplate,1] = initial_ocean_sediment_thickness
                         plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
                         plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
-                    end
-
-                else # world.crust_type[iworld,jworld] == continent_crust
-
-                    if plate.crust_type[iplate,jplate] == not_at_surface
-                    # continent has formed where nothing was
-
-                        accum_diag("continent_created_plate_area",iworld,jworld,
-                            areabox[jplate] / areabox[jworld])
-
-                        world.tectonics[iworld,jworld] = new_continent_crust
-                        plate.tectonics[iplate,jplate] = new_continent_crust
-
-                        plate.crust_age[iplate,jplate] = 0.
-                        plate.crust_type[iplate,jplate] = continent_crust
-                        plate.crust_thickness[iplate,jplate] =
-                            continent_crust_h0
+                        plate.sediment_layer_fractions[iplate,jplate,:,:] .= 0.
+                        plate.sediment_layer_fractions[iplate,jplate,initial_sediment_type,:] .= 1.
+                    else # must be a continent
                         plate.crust_density[iplate,jplate] = rho_continent_crust
+                        plate.geomorphology[iplate,jplate] = sedimented_land
                         plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
                         plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
                         plate.sediment_surface_fractions[iplate,jplate,initial_sediment_type] = 1.
-                        accum_frac_diag("continent_initialization_sediment_fraction_volume",
-                            iworld,jworld,initial_sediment_type,1.)
-
-                    elseif plate.crust_type[iplate,jplate] == ocean_crust
-                    # ocean type has transformed into continental type
-
-                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
-                        plate.sediment_layer_thickness[iplate,jplate,current_time_bin()] = 
-                            initial_ocean_sediment_thickness
-                        # the total amount in sediment_thickness carries over to land point
-                        accum_diag("ocean_2_continent_plate_area",iworld,jworld,
-                            areabox[jplate] / areabox[jworld])
-                        #=
-                        # new continental sediment = positive leak
-                        accum_diag("ocean_2_continent_sediment_leak",iworld,jworld,
-                            1. * areabox[jplate] / areabox[jworld] )
-                        accum_frac_diag("ocean_2_continent_sediment_fraction_leak",
-                            iworld,jworld,initial_sediment_type,
-                            1. * areabox[jplate] / areabox[jworld])
-                        # loss of ocean sediment is a negative leak
-                        for ibin in 1:n_sediment_time_bins
-                            accum_diag("ocean_2_continent_sediment_leak",iworld,jworld,
-                                - plate.sediment_layer_thickness[iplate,jplate,ibin] *
-                                areabox[jplate] / areabox[jworld] )
-                            for i_sedtype in 1:n_sediment_types
-                                accum_frac_diag("ocean_2_continent_sediment_fraction_leak",
-                                    iworld,jworld,i_sedtype,
-                                    - plate.sediment_layer_thickness[iplate,jplate,ibin] *
-                                    plate.sediment_layer_fractions[iplate,jplate,i_sedtype,ibin] *
-                                    areabox[jplate] / areabox[jworld])
-                            end 
-                            #accum_frac_diag("continent_initialization_sediment_fraction_volume",
-                            #    iworld,jworld,initial_sediment_type,
-                            #    areabox[jplate] / areabox[jworld])
-                        end
-                        =#
-                        world.tectonics[iworld,jworld] = ocean_to_continent
-                        plate.tectonics[iplate,jplate] = ocean_to_continent
-
-                        plate.crust_age[iplate,jplate] = 0.
-                        plate.crust_type[iplate,jplate] = continent_crust
-                        plate.crust_thickness[iplate,jplate] =
-                            continent_crust_h0
-                        plate.crust_density[iplate,jplate] = rho_continent_crust
-                        #plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
-                        #plate.sediment_surface_fractions[iplate,jplate,:] .= 0.
-                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
-                        plate.sediment_layer_thickness[iplate,jplate,current_time_bin()] = 
-                            plate.sediment_thickness[iplate,jplate]
+                        #accum_diag("continent_initialization_sediment_volume",
+                        #    iworld,jworld,
+                        #    initial_land_sediment_thickness * areabox[jplate] / areabox[jworld])
+                        #accum_frac_diag("continent_initialization_sediment_fraction_volume",
+                        #    iworld,jworld,initial_sediment_type,
+                        #    initial_land_sediment_thickness  * areabox[jplate] / areabox[jworld])
                     end
-
-                end # updated the status of the plate grid point if required
-
-            else # world map says we dont exist here
-
-                if plate.crust_type[iplate,jplate] == ocean_crust
-                    # but we did last time step -- Subduction!
-
-                    accum_diag("ocean_subduct_plate_area",iworld,jworld,
-                        areabox[jplate] / areabox[jworld] / time_step )
-                    accum_diag("ocean_subduct_age_plate_area",iworld,jworld,
-                            areabox[jplate] / areabox[jworld] / time_step * 
-                            plate.crust_age[iplate,jplate])
-
-                    for ibin in 1:n_sediment_time_bins
-                        accum_diag("ocean_subduct_sediment_volume",iworld,jworld,
-                            areabox[jplate] / areabox[jworld] / time_step * 
-                            plate.sediment_layer_thickness[iplate,jplate,ibin])
-                        for i_sedtype in 1:n_sediment_types
-                            flux_amt = plate.sediment_layer_thickness[iplate,jplate,ibin] *
-                                plate.sediment_layer_fractions[iplate,jplate,i_sedtype,ibin]
-                            accum_frac_diag("ocean_subduct_sediment_fraction_volume",iworld,jworld,
-                                i_sedtype, flux_amt * areabox[jplate] / areabox[jworld] / time_step
-                                )
-                        end
-                    end
-
-                    world.tectonics[iworld,jworld] = subducting_ocean_crust
-                    plate.tectonics[iplate,jplate] = subducting_ocean_crust
-
-                elseif plate.crust_type[iplate,jplate] >= continent_crust
- 
-                    accum_diag("continent_subduct_plate_area",iworld,jworld,
-                        areabox[jplate] / areabox[jworld] / time_step)
-                    accum_diag("continent_subduct_sediment_volume",iworld,jworld,
-                        areabox[jplate] / areabox[jworld] / time_step * 
-                        plate.sediment_thickness[iplate,jplate])
-                    for i_sedtype in 1:n_sediment_types
-                        flux_amt = plate.sediment_thickness[iplate,jplate] *
-                            plate.sediment_surface_fractions[iplate,jplate,i_sedtype]
-                        accum_frac_diag("continent_subduct_sediment_fraction_volume",iworld,jworld,
-                            i_sedtype, flux_amt * areabox[jplate] / areabox[jworld] / time_step)
-                    end
-
-                    world.tectonics[iworld,jworld] = subducting_continent_crust
-                    plate.tectonics[iplate,jplate] = subducting_continent_crust
-
                 end
-
+            else # world.plateID[iworld,jworld] != plate.plateID
                 delete_plate_point!(plate,iplate,jplate)
-
-            end # initialize or update
-        end # loop over plate grid
+            end
+        end
     end
+
+    #=plate.crust_type = cropped_rotated_crust_type
+    plate.sediment_thickness = cropped_rotated_sediment_thickness
+    plate.sediment_surface_fractions = cropped_rotated_sediment_surface_fractions
+    plate.sediment_layer_thickness = cropped_rotated_sediment_layer_thickness
+    plate.sediment_layer_fractions = cropped_rotated_sediment_layer_fractions =#
+                
+    updated_plate_crust_areas = [ 
+        volume_field(eq_mask(plate.crust_type,continent_crust)), 
+        volume_field(eq_mask(plate.crust_type,ocean_crust))]
+    updated_plate_sediment_volume = volume_field(plate.sediment_thickness)
+
+    area_imbalances = updated_plate_crust_areas .- initial_plate_crust_areas .+ 
+        subducted_plate_crust_areas 
+    #area_imbalance = area_imbalances[1] + area_imbalances[2]
+    inv_imbalance = updated_plate_sediment_volume .- initial_plate_sediment_volume .+ 
+        subducted_sediment_volume
+
+    if enable_remask_plate_diagnostics
+        println(" bal ", [area_imbalances,inv_imbalance ])
+    end
+
+    return area_imbalances,inv_imbalance,
+        updated_plate_sediment_volume, initial_plate_sediment_volume,
+        subducted_sediment_volume / time_step
+    
 end
 function remask_plates()   # subduction and crust creation
-    #Threads.@threads 
-    for plateID in world.plateIDlist     #[25:25]# 1:length(plates)
+    n_plates = length(world.plateIDlist)
+    area_imbalances_list = fill(0.,n_plates); inv_imbalances = fill(0.,n_plates)
+    tot_area_imbalance = 0.; tot_inv_imbalance = 0.
+    plate_sed_vols = fill(0.,n_plates); plate_sed_vol_rate = fill(0.,n_plates)
+    plate_subduction_vols = fill(0.,n_plates)
+    total_sediment_volume_from_plates = 0.; total_subducted_sediment_volume_from_plates = 0.
+    total_sediment_volume_rates = 0.
+    Threads.@threads for i_plate = 1:n_plates
+        plateID = world.plateIDlist[i_plate]  #[25:25]# 1:length(plates)
         if haskey(plates,plateID) == false
             plates[plateID] = create_blank_plate(plateID)
             println("emergency plate creation in remask_plates ", plateID)
         end
-        remask_plate!( plates[plateID] )
+        area_imbalances, inv_imbalance,
+            updated_plate_sediment_volume, initial_plate_sediment_volume,subducted_sediment_rate = 
+            remask_plate!( plates[plateID] )
+        area_imbalances_list[ i_plate ] = area_imbalances[1] + area_imbalances[2]
+        inv_imbalances[ i_plate ] = inv_imbalance
+        plate_sed_vols[ i_plate ] = updated_plate_sediment_volume
+        plate_sed_vol_rate[ i_plate ] = ( updated_plate_sediment_volume - initial_plate_sediment_volume ) / time_step
+        plate_subduction_vols[ i_plate ] = subducted_sediment_rate
     end
+
     for (plateID,plate) in plates
         if !(plateID in world.plateIDlist)
             delete!(plates,plateID)
         end
     end
+    if enable_watch_remask_plates_errors
+        for i_plate = 1:n_plates
+            tot_area_imbalance += area_imbalances_list[i_plate]
+            tot_inv_imbalance += inv_imbalances[i_plate]
+            total_sediment_volume_from_plates += plate_sed_vols[ i_plate ]
+            total_subducted_sediment_volume_from_plates += plate_subduction_vols[ i_plate ]
+            total_sediment_volume_rates += plate_sed_vol_rate[ i_plate ]
+        end
+        for i_plate = 1:n_plates
+            println("plate",world.plateIDlist[i_plate]," ",[area_imbalances_list[i_plate], inv_imbalances[i_plate]])
+        end
+        println("tot ", [ tot_area_imbalance, tot_inv_imbalance ] )
+        println("plate sed vol ",[total_sediment_volume_from_plates])
+        println("sed chg, sub rates ", [total_sediment_volume_rates, total_subducted_sediment_volume_from_plates])
+        println("plotting area imbalances by plate")
+        scene = GLMakie.lines(area_imbalances_list)
+        display(scene)
+        sleep(2)
+        println("plotting inv imbalances by plate")
+        scene = GLMakie.lines(inv_imbalances)
+        display(scene)
+        sleep(2)
+    end
+    #error("stopping")
     return
 end
 function nearest_plateij(mplate,iworld,jworld)  # ray trace from a world i,j to a plate
@@ -698,43 +793,300 @@ function projected_world_maskfield!(platemaskfield,rotationmatrix)
 end
 
 # Routines dealing with changing plate IDs
-function update_changing_plateIDs(oldIDmap,newIDmap)
-    newtime = world.age
-    changingplates = changing_platelists(oldIDmap,newIDmap)
-    # finds plateIDs that need filling, excluding ridge spreading etc
-
-    #Threads.@threads 
-    if length(changingplates) > 0
-        println("  moving IDs ",changingplates)
+function delete_old_plates()
+    for (plateID,plate) in plates
+        if plateID in world.plateIDlist == false
+            delete!( plates, plateID )
+            println("deleted old plate ",plateID)
+        end
     end
-    for platepair in changingplates
-        oldplateID = platepair[1]; newplateID = platepair[2]
-        #print([oldplateID,newplateID])
-        update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
-        #        end
+end
+function eyeball_all_changing_plateIDs( )
+    #age = world.age
+    oldIDmap = read_plateIDs( world.age + time_step )
+    newIDmap = read_plateIDs( world.age )
+    #change_log = Dict()
+    while world.age <= 550
+        println("starting ", world.age )
+        changepairs = eyeball_changing_plateIDs(oldIDmap,newIDmap)
+        global plateID_change_log[ world.age ] = changepairs
+        #world.age -= time_step
+        oldIDmap = newIDmap
+        newIDmap = read_plateIDs( world.age )
+        filename = base_directory * "/" * code_base_directory * "/" * "plate_ID_changes.bson"
+        rm(filename, force=true)
+        println("saving ", filename)
+        BSON.@save filename plateID_change_log
     end
     
-    #world.plateID = newIDmap
-    #world.plateIDlist = find_plateID_list()
+    #return change_log
+end
+
+function eyeball_changing_plateIDs( age )
+    global world = create_world( age )
+    changepairs = eyeball_changing_plateIDs()
+    plateID_change_log[world.age] = changepairs
+    return changepairs
+end
+function eyeball_changing_plateIDs()
+    oldIDmap = read_plateIDs( world.age + time_step )
+    newIDmap = read_plateIDs( world.age )
+    changepairs = eyeball_changing_plateIDs(oldIDmap,newIDmap)
+    plateID_change_log[world.age] = changepairs
+    return changepairs
+end
+function eyeball_changing_plateIDs(oldIDmap,newIDmap)
+    changepairs = []
+    for ixworld in 1:nx # 1+fp:nx-fp
+        for iyworld in 1:ny # 1+fp:ny-fp
+            if oldIDmap[ixworld,iyworld] != newIDmap[ixworld,iyworld]
+                oldplateID = oldIDmap[ixworld,iyworld]
+                newplateID = newIDmap[ixworld,iyworld]
+                key = [ oldplateID, newplateID ]
+                push!(changepairs,key)
+            end
+        end
+    end
+    changepairs = unique(changepairs)
+    filtered_changepairs = []
+    for changepair in changepairs
+        oldplateID = changepair[1]; newplateID = changepair[2]
+        oldIDmask = eq_mask(oldIDmap,oldplateID)
+        newIDmask = eq_mask(newIDmap,newplateID)
+        needschangingworldmask = oldIDmask .* newIDmask # fill(0,nx,ny)
+        nskins = length( get_blob_onion_layers(needschangingworldmask ) )
+        if nskins > 1
+            push!(filtered_changepairs,[oldplateID,newplateID])
+        end
+    end
+    changepairs = filtered_changepairs
+    num_changepairs = length(filtered_changepairs)
+    println("number of open possibilities = ", num_changepairs )
+    needschangingworldmasks = fill(0,nx,ny,num_changepairs)
+
+    filtered_changepairs = []
+    old_plateID_list = world.plateIDlist
+    old_plateID_field = world.plateID
+    old_continent_mask = eq_mask(world.crust_type,continent_crust)
+    global world = create_world( world.age + time_step )
+    old_plateID_field = world.plateID
+    new_plateID_list = world.plateIDlist
+    new_continent_mask = eq_mask(world.crust_type,continent_crust)
+    global world = create_world( world.age - time_step )
+    i_choose_pair = 1
+    while i_choose_pair <= num_changepairs
+        choosechangepair = changepairs[i_choose_pair]
+        if length(filtered_changepairs) > 0
+            if filtered_changepairs[end] == choosechangepair # for backing up
+                pop!(filtered_changepairs)
+            end
+        end
+        oldplateID = choosechangepair[1]; newplateID = choosechangepair[2]
+        viz_changes = fill(3,nx,ny) # no changes = green
+        for i_pair_viz in 1:num_changepairs
+            vizchangepair = changepairs[i_pair_viz]
+            oldplateID = vizchangepair[1]; newplateID = vizchangepair[2]
+            oldIDmask = eq_mask(oldIDmap,oldplateID)
+            newIDmask = eq_mask(newIDmap,newplateID)
+            needschangingworldmasks[:,:,i_pair_viz] = oldIDmask .* newIDmask # fill(0,nx,ny)
+            if i_pair_viz > i_choose_pair # undetermined yet
+                viz_changes -= needschangingworldmasks[:,:,i_pair_viz] # light violet
+            elseif i_pair_viz == i_choose_pair
+                viz_changes += 2 * needschangingworldmasks[:,:,i_pair_viz]
+            elseif vizchangepair in filtered_changepairs
+                viz_changes += needschangingworldmasks[:,:,i_pair_viz]
+            else
+                viz_changes -= 2 * needschangingworldmasks[:,:,i_pair_viz]
+            end
+        end        #oldIDmask = eq_mask(oldIDmap,oldplateID)
+        #newIDmask = eq_mask(newIDmap,newplateID)
+        #needschangingworldmask = oldIDmask .* newIDmask # fill(0,nx,ny)
+        scene = plot_field( viz_changes .+ 4 * needschangingworldmasks[:,:,i_choose_pair],0.,6. )
+        Makie.contour!(scene,xcoords,ycoords,needschangingworldmasks[:,:,i_choose_pair],color=:red)
+        for plateID in old_plateID_list
+            maskfield = eq_mask(old_plateID_field,plateID)
+            Makie.contour!(scene,xcoords,ycoords,maskfield,color=:black)
+        end
+        Makie.contour!(scene,xcoords,ycoords,old_continent_mask,color=:black)
+        for plateID in new_plateID_list
+            maskfield = eq_mask(world.plateID,plateID)
+            Makie.contour!(scene,xcoords,ycoords,maskfield,color=:white)
+        end
+        Makie.contour!(scene,xcoords,ycoords,new_continent_mask,color=:white)
+        display(scene)
+        
+        println(i_choose_pair, " ", oldplateID," ",newplateID," y/n?")
+        input_char = readline()
+        if input_char == "y"
+            println("got it")
+            i_choose_pair += 1
+            push!(filtered_changepairs,choosechangepair)
+        elseif input_char == "b" # back
+            i_choose_pair -= 1
+        elseif input_char == "bb" # back
+            i_choose_pair = 1 
+        elseif input_char == "d" # done
+            i_choose_pair = num_changepairs + 1
+        else
+            i_choose_pair += 1
+        end
+    end
+    return filtered_changepairs
+end
+function rejigger_plateID_changes()
+    rejiggered_plateID_changes = Dict()
+    for i in 1:550
+        changelist = []
+        if haskey(plateID_change_log,i)
+            nchanges = length(plateID_change_log[i])
+            if nchanges > 0 
+                for j in 1:nchanges
+                    push!(changelist,[plateID_change_log[i][j][2],plateID_change_log[i][j][1]])
+                end 
+            end
+        end
+        rejiggered_plateID_changes[i] = changelist
+    end
+    return rejiggered_plateID_changes
+end
+function plot_plateID_changes(  )
+    #global world = create_world( age )
+    age = world.age
+    new_plateID_list = world.plateIDlist
+    new_plateID_field = world.plateID
+    new_continent_mask = eq_mask(world.crust_type,continent_crust)
+    changepairs = []
+    if haskey(plateID_change_log, age)
+        changepairs = plateID_change_log[ age ]
+    end
+    global world = create_world( world.age + time_step )
+    old_plateID_field = world.plateID
+    old_plateID_list = world.plateIDlist
+    #update_world_continents_from_file() 
+    old_continent_mask = eq_mask(world.crust_type,continent_crust)
+    global world = create_world( world.age - time_step )
+    viz_field = fill(0.,nx,ny)
+    for ixworld in 1:nx # 1+fp:nx-fp
+        for iyworld in 1:ny # 1+fp:ny-fp
+            if old_plateID_field[ixworld,iyworld] != new_plateID_field[ixworld,iyworld]
+                viz_field[ixworld,iyworld] = 1
+            end
+        end
+    end
+    for changepair in changepairs
+        oldplateID = changepair[1]; newplateID = changepair[2]
+        oldIDmask = eq_mask(old_plateID_field,oldplateID)
+        newIDmask = eq_mask(new_plateID_field,newplateID)
+        viz_field[:,:] += 2 .* (oldIDmask .* newIDmask )# fill(0,nx,ny)
+    end
+    scene = plot_field( viz_field, 0., 2. )
+    for plateID in old_plateID_list
+        maskfield = eq_mask(old_plateID_field,plateID)
+        Makie.contour!(scene,xcoords,ycoords,maskfield,color=:white)
+    end
+    Makie.contour!(scene,xcoords,ycoords,old_continent_mask,color=:white)
+    for plateID in new_plateID_list
+        maskfield = eq_mask(new_plateID_field,plateID)
+        Makie.contour!(scene,xcoords,ycoords,maskfield,color=:black)
+    end
+    Makie.contour!(scene,xcoords,ycoords,new_continent_mask,color=:black)
+    text!(scene,string(world.age) * " Mya",position=(-180,100),textsize=20)
+    #text!(scene,string(plateID_change_log[age]),position=(-180,-10),textsize=10 )
+    return scene
+end
+    
+
+function animate_plateID_changes()
+    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "plateID_changes" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ 0 ]
+    for age in 549:-1:0 # animation_initial_age: - time_step * animation_n_step : 0
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = create_world( age )
+            scene = plot_plateID_changes( )
+            
+            Makie.save( image_file_name, scene )
+        end
+    end
+    mp4_file =  "plateID_changes.mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cd( base_directory * "/" * code_base_directory )
+end
+
+function update_changing_plateIDs(oldIDmap,newIDmap)
+    changingplates = 
+        auto_filter_changing_platelists(oldIDmap,newIDmap)
+    update_changing_plateIDs(oldIDmap,newIDmap,changingplates)
+end
+function update_changing_plateIDs(oldIDmap,newIDmap,changingplates)
+    newtime = world.age
+    
+    #Threads.@threads 
+    needschangingglobalmask = fill(0,nx,ny)
+    for platepair in changingplates
+        oldplateID = platepair[1]; newplateID = platepair[2]
+        initial_inv = 0.
+        if enable_changing_plateID_diagnostics
+            initial_inv = volume_field(plates[oldplateID].sediment_thickness)
+            if haskey(plates,newplateID)
+                initial_inv += volume_field(plates[newplateID].sediment_thickness)
+            end
+        end
+
+
+        needschangingworldmask = update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
+
+        if enable_changing_plateID_diagnostics
+            final_inv = volume_field(plates[oldplateID].sediment_thickness) +
+                volume_field(plates[newplateID].sediment_thickness)
+            println("ID change ",[oldplateID,newplateID],
+                [initial_inv,final_inv,final_inv - initial_inv])
+            #scene = plot_field( needschangingworldmask )
+            #plot_add_continent_outlines!( scene )
+            #display(scene)
+            #sleep(3)
+        end
+    end
     return
 end
+function looks_like_a_real_ID_change( needschangingworldmask )
+    its_a_big_blob = false
+    if length( get_blob_onion_layers(needschangingworldmask ) ) > 5
+        its_a_big_blob = true
+    end
+    return its_a_big_blob
+end
+
 function update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
     # called when one or more grid points change their plateIDs
     newtime = world.age; oldtime = newtime + time_step
     #println("updating ", oldplateID," ",newplateID," ",oldtime," ",newtime)
     if haskey(plates,oldplateID) == false
-        println("creating plate to migrate data from ", oldplateID)
+        println("    creating plate to migrate data from ", oldplateID)
         plates[oldplateID] = create_blank_plate(newplateID)
     end
     oldplate = plates[oldplateID]
     if haskey(plates,newplateID) == false
-        println("creating plate to migrate data to ", newplateID)
+        println("    creating plate to migrate data to ", newplateID)
         plates[newplateID] = create_blank_plate(newplateID)
         resolve_rotation_matrix!(newplateID,newtime)
         initial_mask_plate!(plates[newplateID])
     end
     newplate = plates[newplateID]
-    newplate_oldrotation = resolve_rotation_matrix!(newplateID,oldtime)
+    #newplate_oldrotation = resolve_rotation_matrix!(newplateID,oldtime)
     #if newplate.resolvetime < 0
     #    println("  Trying to update to an unrotated plate ", oldplate.plateID, " ", newplate.plateID)
     #end
@@ -746,7 +1098,7 @@ function update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
 
     # points in world grid where old ID changes to new ID
     firstoldtime,lastoldtime = first_last_appearance(oldplateID)
-    firstnewtime,lastnewtime = first_last_appearance(newplateID)
+    #firstnewtime,lastnewtime = first_last_appearance(newplateID)
     switchovertime = newtime # use rotations for newtime if possible
     if lastoldtime > newtime
         switchovertime = lastoldtime  # or back up to end time of old plate
@@ -754,17 +1106,6 @@ function update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
     newplate_switchrotation = resolve_rotation_matrix!(newplateID,switchovertime)
     needschangingnewplatemask = projected_plate_maskfield!(needschangingworldmask,
         newplate_switchrotation)
-    #= for ixnewplate in 1:nx
-        for iynewplate in 1:ny
-            ixworld,iyworld = nearest_worldij(newplate_switchrotation,
-                ixnewplate,iynewplate)
-            if newIDmap[ixworld,iyworld] == newplateID
-                if oldIDmap[ixworld,iyworld] == oldplateID
-                    needschangingnewplatemask[ixnewplate,iynewplate] = 1
-                end
-            end
-        end
-    end =# # unnecessary since projected_plate_maskfield is complete on plate grid
     oldplate_switchrotation = resolve_rotation_matrix!(oldplateID,switchovertime)
     needsdeletingoldplatemask = projected_plate_maskfield!(needschangingworldmask,
         oldplate_switchrotation)
@@ -776,8 +1117,10 @@ function update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
                 if ixworld > 0
                     ixoldplate,iyoldplate = nearest_plateij(oldplate.rotationmatrix,
                         ixworld,iyworld)
+
                     copy_plate_point_plate12coord!(newplate,oldplate,
                         ixoldplate,iyoldplate,ixnewplate,iynewplate)
+
                     accum_diag("IDchange_plate_area",ixworld,iyworld,
                         areabox[iynewplate] / areabox[iyworld] )
                 end
@@ -796,31 +1139,41 @@ function update_two_plates!(oldplateID,newplateID,oldIDmap,newIDmap)
             end
         end
     end
-    return
+    return needschangingworldmask
 end
-function copy_plate_point_plate12coord!(newplate,oldplate,ixold,iyold,ixnew,iynew)
-    if oldplate.crust_type[ixold,iyold] == not_at_surface #||
+function copy_plate_point_plate12coord!(newplate,oldplate,ixoldplate,iyoldplate,ixnewplate,iynewplate)
+    if oldplate.crust_type[ixoldplate,iyoldplate] == not_at_surface #||
         #        oldplate.crust_type[ixold,iyold] == ocean_crust  # moving ridge
         # edge cases, messy spreading
-        newplate.tectonics[ixnew,iynew] = new_ocean_crust
-        newplate.crust_type[ixnew,iynew] = ocean_crust
-        newplate.crust_thickness[ixnew,iynew] = ocean_crust_h0
-        newplate.crust_density[ixnew,iynew] = rho_ocean_crust
-        newplate.crust_age[ixnew,iynew] = 0.
+        newplate.crust_type[ixnewplate,iynewplate] = ocean_crust
+        newplate.crust_age[ixnewplate,iynewplate] = 0.
+        newplate.crust_thickness[ixnewplate,iynewplate] = ocean_crust_h0
+        newplate.crust_density[ixnewplate,iynewplate] = rho_ocean_crust
+        newplate.geomorphology[ixnewplate,iynewplate] = pelagic_seafloor
+        newplate.tectonics[ixnewplate,iynewplate] = new_ocean_crust
+
+        newplate.sediment_thickness[ixnewplate,iynewplate] = initial_ocean_sediment_thickness
+        newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 0.
+        newplate.sediment_layer_thickness[ixnewplate,iynewplate,1] = initial_ocean_sediment_thickness
+        newplate.sediment_surface_fractions[ixnewplate,iynewplate,:] .= 0.
+        newplate.sediment_surface_fractions[ixnewplate,iynewplate,initial_sediment_type] = 1.
+        newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,:] .= 0.
+        newplate.sediment_layer_fractions[ixnewplate,iynewplate,initial_sediment_type,:] .= 1.
+
     else
-        newplate.tectonics[ixnew,iynew] = new_plateID
-        newplate.crust_type[ixnew,iynew] = oldplate.crust_type[ixold,iyold]
-        newplate.crust_age[ixnew,iynew] = oldplate.crust_age[ixold,iyold]
-        newplate.crust_thickness[ixnew,iynew] = oldplate.crust_thickness[ixold,iyold]
-        newplate.crust_density[ixnew,iynew] = oldplate.crust_density[ixold,iyold]
-        newplate.sediment_thickness[ixnew,iynew] = 
-            oldplate.sediment_thickness[ixold,iyold]
-        newplate.sediment_surface_fractions[ixnew,iynew,:] .= 
-            oldplate.sediment_surface_fractions[ixold,iyold,:]
-        newplate.sediment_layer_thickness[ixnew,iynew,:] .= 
-            oldplate.sediment_layer_thickness[ixold,iyold,:]
-        newplate.sediment_layer_fractions[ixnew,iynew,:,:] .= 
-            oldplate.sediment_layer_fractions[ixold,iyold,:,:]
+        newplate.crust_type[ixnewplate,iynewplate] = oldplate.crust_type[ixoldplate,iyoldplate]
+        newplate.crust_age[ixnewplate,iynewplate] = oldplate.crust_age[ixoldplate,iyoldplate]
+        newplate.crust_thickness[ixnewplate,iynewplate] = oldplate.crust_thickness[ixoldplate,iyoldplate]
+        newplate.crust_density[ixnewplate,iynewplate] = oldplate.crust_density[ixoldplate,iyoldplate]
+        newplate.geomorphology[ixnewplate,iynewplate] = oldplate.geomorphology[ixoldplate,iyoldplate]
+        newplate.sediment_thickness[ixnewplate,iynewplate] = 
+            oldplate.sediment_thickness[ixoldplate,iyoldplate]
+        newplate.sediment_surface_fractions[ixnewplate,iynewplate,:] .= 
+            oldplate.sediment_surface_fractions[ixoldplate,iyoldplate,:]
+        newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 
+            oldplate.sediment_layer_thickness[ixoldplate,iyoldplate,:]
+        newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,:] .= 
+            oldplate.sediment_layer_fractions[ixoldplate,iyoldplate,:,:]
     end
 end
 function delete_plate_point!(oldplate,ixold,iyold)
@@ -833,16 +1186,21 @@ function delete_plate_point!(oldplate,ixold,iyold)
     oldplate.sediment_layer_thickness[ixold,iyold,:] .= 0.
     oldplate.sediment_layer_fractions[ixold,iyold,:,:] .= 0.
 end
-function changing_platelists(oldIDmap,newIDmap)
+function auto_filter_changing_platelists(oldIDmap,newIDmap)
     #oldIDmap = world.plateID
     oldtime = world.age + time_step
-    fp = 2
+    fp = 0
     changepairs = []
-    for ixworld in 1+fp:nx-fp
-        for iyworld in 1+fp:ny-fp
-            if oldIDmap[ixworld,iyworld] !=
-                newIDmap[ixworld,iyworld]
-                foundone = 0
+    for ixworld in 1:nx # 1+fp:nx-fp
+        for iyworld in 1:ny # 1+fp:ny-fp
+            if oldIDmap[ixworld,iyworld] != newIDmap[ixworld,iyworld]
+
+                oldplateID = oldIDmap[ixworld,iyworld]
+                newplateID = newIDmap[ixworld,iyworld]
+                key = [ oldplateID, newplateID ]
+                push!(changepairs,key)
+
+                #=foundone = 0
                 for ifp in -fp:fp
                     if oldIDmap[ixworld+ifp,iyworld+ifp] ==
                         newIDmap[ixworld+ifp,iyworld+ifp]
@@ -854,13 +1212,69 @@ function changing_platelists(oldIDmap,newIDmap)
                     newplateID = newIDmap[ixworld,iyworld]
                     key = [ oldplateID, newplateID ]
                     push!(changepairs,key)
-                end
+                end =#
             end
         end
     end
     # list of large blobs of gridpoints in successive world grids where the ID changes
     changepairs = unique(changepairs)
-    return changepairs
+    filtered_changepairs = []
+    needschangingglobalmask = fill(0,nx,ny)
+    for changepair in changepairs
+        oldplateID = changepair[1]; newplateID = changepair[2]
+        oldIDmask = eq_mask(oldIDmap,oldplateID)
+        # grid points in world grid of old plateID number at old time step
+        newIDmask = eq_mask(newIDmap,newplateID)
+        # points in new world grid where the new plate ID is found
+        needschangingworldmask = oldIDmask .* newIDmask # fill(0,nx,ny)
+        nskins = length( get_blob_onion_layers(needschangingworldmask ) )
+        if nskins > 2 # do a plate transplant
+            push!(filtered_changepairs,changepair)
+            
+            if enable_watch_plate_transplants || enable_save_plate_transplant_images
+                println("plate transplant ",changepair," ",nskins)
+                scene = plot_field( needschangingworldmask,-1.,1. )
+                plot_add_continent_outlines!( scene )
+                plot_add_timestamp!(scene,world.age,-180,-105) 
+                #plot_add_plate_boundaries!( scene )
+                transaction = string(oldplateID) * " change to " * string(newplateID)
+                text!(scene,transaction, position = (0,95),textsize=15)
+                if enable_watch_plate_transplants
+                    display(scene)
+                    sleep(2)
+                end
+                if enable_save_plate_transplant_images
+                    global save_plate_transplants_image_number += 1
+                    image_file_name = "img." * lpad(save_plate_transplants_image_number,4,"0") * ".png"
+                    filename = base_directory * "/" * output_directory * output_tag * 
+                        "/" * animation_directory * "/plate_transplants/" * image_file_name
+                    Makie.save( filename, scene )
+                end
+            end
+            #needschangingglobalmask += needschangingworldmask
+        else
+            #needschangingglobalmask -= needschangingworldmask
+            #=if enable_watch_plate_transplants
+                println("             not ",changepair," ",nskins)
+                scene = plot_field( - needschangingworldmask,-1.,1. )
+                plot_add_continent_outlines!( scene )
+                #plot_add_plate_boundaries!( scene )
+                #text!(scene,"ID change", position = (0,95),textsize=15)
+                display(scene)
+                sleep(3)
+            end =#
+        end 
+    end
+    #=if enable_watch_plate_transplants
+        println("plotting plate transplants, red=yes, purple=no")
+        scene = plot_field( needschangingglobalmask,-1.,1. )
+        plot_add_continent_outlines!( scene )
+        #plot_add_plate_boundaries!( scene )
+        #text!(scene,"ID change", position = (0,95),textsize=15)
+        display(scene)
+        sleep(2)
+    end =#
+    return filtered_changepairs
 end
 function find_plateID_list()
     return find_plateID_list( world.plateID )
@@ -880,18 +1294,45 @@ function find_plateID_list(plateIDmap)
 end
 
 # Utilities
-function apply_geomorphology_changes_to_plates()
-    #Threads.@threads 
-    for plateID in world.plateIDlist
+function apply_tectonics_changes_to_plates()
+    Threads.@threads for plateID in world.plateIDlist
         plate = plates[plateID]
         for iplate in 1:nx
             for jplate in 1:ny
                 iworld, jworld = nearest_worldij(plate.rotationmatrix,iplate,jplate)
                 if world.plateID[iworld,jworld] == plateID
                     plates[plateID].crust_thickness[iplate,jplate] =
-                        world.crust_thickness[iworld,jworld]
+                        world.crust_thickness[iworld,jworld]   
+                    plates[plateID].crust_type[iplate,jplate] =
+                        world.crust_type[iworld,jworld]    
+                    plates[plateID].crust_density[iplate,jplate] =
+                        world.crust_density[iworld,jworld]    
+                    plates[plateID].crust_age[iplate,jplate] = 
+                        world.crust_age[iworld,jworld]  
+                end
+            end
+        end
+    end
+end
+function apply_geomorphology_changes_to_plates()
+    Threads.@threads for plateID in world.plateIDlist
+        plate = plates[plateID]
+        for iplate in 1:nx
+            for jplate in 1:ny
+                iworld, jworld = nearest_worldij(plate.rotationmatrix,iplate,jplate)
+                if world.plateID[iworld,jworld] == plateID
                     plates[plateID].crust_type[iplate,jplate] =
                         world.crust_type[iworld,jworld]
+                    plates[plateID].crust_age[iplate,jplate] =
+                        world.crust_age[iworld,jworld]
+                    plates[plateID].crust_thickness[iplate,jplate] =
+                        world.crust_thickness[iworld,jworld]                    
+                    plates[plateID].crust_density[iplate,jplate] =
+                        world.crust_density[iworld,jworld]
+                    plates[plateID].geomorphology[iplate,jplate] =
+                        world.geomorphology[iworld,jworld]
+                    plates[plateID].tectonics[iplate,jplate] =
+                        world.tectonics[iworld,jworld]
                     plates[plateID].sediment_thickness[iplate,jplate] =
                         world.sediment_thickness[iworld,jworld]
                     plates[plateID].sediment_surface_fractions[iplate,jplate,:] =

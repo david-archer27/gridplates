@@ -74,7 +74,7 @@ function ocean_thermal_boundary_layer(crust_age,crust_thickness,crust_density) #
     # elevation_offset could also be used to tweak continents up and down
     # time independent, just based on crust age
     kappa = 1.e-6
-    thermal_expansion = 3.e-5
+    thermal_expansion = 3.3e-5
     elevation_offset = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
@@ -83,24 +83,31 @@ function ocean_thermal_boundary_layer(crust_age,crust_thickness,crust_density) #
                 boundary_thickness = sqrt( kappa * age * 3.14e7) # meters, inc crust
                 boundary_thickness = max(boundary_thickness,crust_thickness[ix,iy])
                 mantle_boundary_thickness = boundary_thickness - crust_thickness[ix,iy]
+                temperature_crust_base = mantle_T0
                 if mantle_boundary_thickness > 0.
-                    temperature_crust_base = mantle_T0 -
-                        ( mantle_T0 - ocean_T0 ) *
-                        crust_thickness[ix,iy] / boundary_thickness
-                else
-                    temperature_crust_base = mantle_T0
+                    #temperature_crust_base = mantle_T0 -
+                    #    ( mantle_T0 - ocean_T0 ) *
+                    #    crust_thickness[ix,iy] / boundary_thickness
+                    temperature_crust_base = mantle_T0 * crust_thickness[ix,iy] /
+                        boundary_thickness
                 end
                 mantle_bl_temp_avg = ( mantle_T0 + temperature_crust_base ) / 2.
                 crust_temp_avg = ( ocean_T0 + temperature_crust_base ) / 2.
                 crust_density[ix,iy] = rho_ocean_crust *
-                    ( 1. - thermal_expansion * ( crust_temp_avg - mantle_T0 ) )
+                    ( 1. - thermal_expansion * ( crust_temp_avg - mantle_T0 / 2. ) )
+                #crust_density[ix,iy] = rho_ocean_crust * 
+                #    ( 1. + thermal_expansion * ( crust_temp_avg - ocean_T0 ) )
                 mantle_bl_density = rho_mantle *
                     ( 1. - thermal_expansion * ( mantle_bl_temp_avg - mantle_T0 ) )
-                elevation_offset[ix,iy] = boundary_thickness - # whole boundary layer
-                    ( mantle_boundary_thickness * mantle_bl_density / rho_mantle +
-                    crust_thickness[ix,iy] * crust_density[ix,iy] / rho_ocean_crust )
+                crust_elevation_offset = crust_thickness[ix,iy] * 
+                    ( 1. - rho_ocean_crust / crust_density[ix,iy] )
+                mantle_elevation_offset = mantle_boundary_thickness *
+                    ( 1. - rho_mantle / mantle_bl_density )
+                elevation_offset[ix,iy] = - crust_elevation_offset - mantle_elevation_offset
                 #world.crust_thickness[ix,iy] = ocean_crust_h0
                 #world.crust_density[ix,iy] = crust_density
+            else
+                elevation_offset[ix,iy] = 0.
             end
         end
     end
@@ -116,7 +123,7 @@ function compute_freeboard()
     return
 end
 # Utilities
-function get_sealevel() # will be replaced by interpolation like for rotations
+function get_sealevel( ) # will be replaced by interpolation like for rotations
     return 4714.7
 end
 function ocean_area()
