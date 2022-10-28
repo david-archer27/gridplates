@@ -115,7 +115,20 @@ function setup_working_directories()
         mkdir( plate_directory )
         println( "creating ", plate_directory )
     end
-    
+    if code_backup_directory in readdir()
+    else
+        mkdir( code_backup_directory )
+        println( "creating ", code_backup_directory )
+        cd( base_directory * "/"* output_directory * output_tag * "/" * code_backup_directory )
+        for jl_file in ["params.jl", "main.jl","steps.jl","land_sed.jl","ocean_sed.jl","caco3.jl","orogeny.jl","plates.jl","utilities.jl","io.jl","params.jl"]
+            if jl_file in readdir()
+            else
+                cp( base_directory * "/" * code_base_directory * "/" * jl_file, 
+                    base_directory * "/"* output_directory * output_tag * "/" * code_backup_directory * "/" * jl_file )
+            end
+        end
+    end
+    cd( base_directory * "/"* output_directory * output_tag )
     if charts_directory in readdir()
     else
         mkdir( charts_directory )
@@ -314,7 +327,7 @@ function animate_elevation()
     starting_file_list = readdir()
     image_number = 0
     ages = [ animation_final_age ]
-    for age in animation_initial_age: - time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
         push!(ages,age)
     end
     for age in ages
@@ -337,7 +350,7 @@ function animate_elevation()
     mp4_file =  "elevation." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cd( base_directory * "/" * code_base_directory )
 end
 function animate_pct_CaCO3()
@@ -347,7 +360,7 @@ function animate_pct_CaCO3()
     starting_file_list = readdir()
     image_number = 0
     ages = [ animation_final_age ]
-    for age in animation_initial_age: - time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
         push!(ages,age)
     end
     for age in ages
@@ -370,7 +383,7 @@ function animate_pct_CaCO3()
     mp4_file =  "pct_CaCO3." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cd( base_directory * "/" * code_base_directory )
 end
 function animate_sed_thickness()
@@ -380,7 +393,7 @@ function animate_sed_thickness()
     starting_file_list = readdir()
     image_number = 0
     ages = [ animation_final_age ]
-    for age in animation_initial_age: - time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
         push!(ages,age)
     end
     for age in ages
@@ -403,7 +416,41 @@ function animate_sed_thickness()
     mp4_file =  "sed_thickness." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cd( base_directory * "/" * code_base_directory )
+end
+function animate_sedimentation_rate()
+    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "sed_rate" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ animation_final_age ]
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = read_world( age )
+            depo = get_diag("global_sediment_deposition_rate")
+            scene = plot_field( depo, -100., 100.)
+            plot_add_plate_boundaries!(scene)
+            plot_add_orogenies!(scene)
+            plot_add_continent_outlines!(scene)
+            plot_add_timestamp!(scene,world.age,-180,-105) 
+            plot_add_title!(scene,"Sedimentation rate")
+            Makie.save( image_file_name, scene )
+        end
+    end
+    mp4_file =  "sed_rate." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
     cd( base_directory * "/" * code_base_directory )
 end
 function animate_crust_age( )
@@ -413,7 +460,7 @@ function animate_crust_age( )
     starting_file_list = readdir()
     image_number = 0
     ages = [ animation_final_age ]
-    for age in animation_initial_age: - time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
         push!(ages,age)
     end
     for age in ages
@@ -436,7 +483,40 @@ function animate_crust_age( )
     mp4_file =  "crust_age." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cd( base_directory * "/" * code_base_directory )
+end
+function animate_crust_thickness( )
+    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "crust_thickness" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ animation_final_age ]
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = read_world( age )
+            scene = plot_field(world.crust_thickness ./ 1000,0.,50.)
+            plot_add_plate_boundaries!(scene)
+            plot_add_orogenies!(scene)
+            plot_add_continent_outlines!(scene)
+            plot_add_timestamp!(scene,world.age,-180,-105)
+            plot_add_title!(scene,"Crust thickness, km")
+            Makie.save( image_file_name, scene )
+        end
+    end
+    mp4_file =  "crust_thickness." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cd( base_directory * "/" * code_base_directory )
 end
 function animate_scotese_elevation( )
@@ -446,7 +526,7 @@ function animate_scotese_elevation( )
     starting_file_list = readdir()
     image_number = 0
     ages = [ animation_final_age ]
-    for age in animation_initial_age: - time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
         push!(ages,age)
     end
     for age in ages
@@ -474,7 +554,7 @@ function animate_scotese_elevation( )
     mp4_file =  "scotese_elevation." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cd( base_directory * "/" * code_base_directory )
 end
 function animate_all( )
@@ -482,6 +562,8 @@ function animate_all( )
     animate_pct_CaCO3()
     animate_sed_thickness()
     animate_crust_age( )
+    animate_crust_thickness( )
+    animate_sedimentation_rate()
     animate_scotese_elevation( )
 end
 # Makie map plots
@@ -489,7 +571,7 @@ end
 function create_timeseries_charts(  )
     age = earliesttime 
     global world = read_world( age )
-    n_time_points = Int( age / time_step) + 1
+    n_time_points = Int( age / main_time_step) + 1
     n_diags = length(world_diag_names)
     n_frac_diags = length(world_frac_diag_names)
     diags_timeseries = fill(0.,n_diags,n_time_points)
@@ -500,6 +582,9 @@ function create_timeseries_charts(  )
     ocean_inventory_timeseries = fill(0.,n_sediment_types,n_time_points)
     area_timeseries = fill(0.,2,n_time_points)
     elevation_timeseries = fill(0.,n_time_points,3)
+    subduction_rates = fill(0.,0:n_sediment_types,n_time_points)
+    cum_subduction_rates = fill(0.,0:n_sediment_types,0:n_time_points)
+    cum_subduction_rates[:,0] .= 0.
     time_points = fill(0.,n_time_points)
     i_time_point = 0
     last_step_inventories = 
@@ -508,7 +593,7 @@ function create_timeseries_charts(  )
     fill( 0., n_sediment_types )
     step_changes = fill( 0., n_sediment_types, n_time_points )
     while age > animation_final_age
-        age -= time_step
+        age -= main_time_step
         println(age)
         i_time_point += 1
         time_points[i_time_point] = - age
@@ -519,42 +604,53 @@ function create_timeseries_charts(  )
             world_land_sediment_inventories( )[1:n_sediment_types]
         ocean_inventory_timeseries[1:n_sediment_types,i_time_point] = 
             world_ocean_sediment_inventories( )[1:n_sediment_types]
-        Threads.@threads for i_diag in 1:n_diags
+        subduction_rates[1:n_sediment_types,i_time_point] .= 
+            world.subducted_ocean_sediment_volumes .+
+            world.subducted_land_sediment_volumes
+        for i_sedtype in 1:n_sediment_types
+            subduction_rates[0,i_time_point] += subduction_rates[i_sedtype,i_time_point]
+        end
+        #Threads.@threads 
+        for i_diag in 1:n_diags
             diag_volume = volume_field( get_diag(world_diag_names[i_diag] ))
             diags_timeseries[i_diag,i_time_point] = diag_volume
             if i_time_point > 1
                 cum_diags_timeseries[i_diag,i_time_point] = 
-                    cum_diags_timeseries[i_diag,i_time_point-1] + diag_volume * time_step
+                    cum_diags_timeseries[i_diag,i_time_point-1] + diag_volume * main_time_step
             else
                 cum_diags_timeseries[i_diag,i_time_point] = 
-                    diag_volume * time_step
+                    diag_volume * main_time_step
             end
         end
-        Threads.@threads for i_frac_diag in 1:n_frac_diags
+        #Threads.@threads 
+        for i_frac_diag in 1:n_frac_diags
             for i_sedtype in 1:n_sediment_types
                 frac_diag_volume = volume_field( get_frac_diag(world_frac_diag_names[i_frac_diag], i_sedtype ))
                 frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point] = frac_diag_volume
                 if i_time_point > 1
                     cum_frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point] = 
                         cum_frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point-1] + 
-                        frac_diag_volume * time_step
+                        frac_diag_volume * main_time_step
                 else
                     cum_frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point] = 
-                        frac_diag_volume * time_step
+                        frac_diag_volume * main_time_step
                 end
+                cum_subduction_rates[:,i_time_point] .= 
+                    cum_subduction_rates[:,i_time_point-1] +
+                    subduction_rates[:,i_time_point]
             end
         end
 
         step_changes[1:n_sediment_types,i_time_point] = (
             land_inventory_timeseries[1:n_sediment_types,i_time_point] .+
             ocean_inventory_timeseries[1:n_sediment_types,i_time_point] .-
-            last_step_inventories ) ./ time_step
+            last_step_inventories ) ./ main_time_step
         last_step_inventories = 
             land_inventory_timeseries[1:n_sediment_types,i_time_point] .+
             ocean_inventory_timeseries[1:n_sediment_types,i_time_point]
-        is_land = gt_mask(world.freeboard,0.)
-        elevation_timeseries[i_time_point,1] = field_mean(world.freeboard .* is_land)
-        elevation_timeseries[i_time_point,2] = field_mean(world.freeboard .* (1. .- is_land))
+        #is_land = gt_mask(world.freeboard,0.)
+        elevation_timeseries[i_time_point,1] = field_mean(world.freeboard .* is_land())
+        elevation_timeseries[i_time_point,2] = field_mean(world.freeboard .* (1 .- is_land()))
         elevation_timeseries[i_time_point,3] = field_max(world.freeboard)
     end
     n_time_points = length(time_points)
@@ -566,10 +662,11 @@ function create_timeseries_charts(  )
     clay_prod = diags_timeseries[
         diag_index("crust_clay_source_rate"),:]
     variable_point_array[:,1] = clay_prod[:]
-    clay_subduct = frac_diags_timeseries[frac_diag_index(
+    clay_subduct = subduction_rates[clay_sediment,:]
+        #=frac_diags_timeseries[frac_diag_index(
         "ocean_subduct_sediment_fraction_thickness"),clay_sediment,:] +
         frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]
+        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]=#
     variable_point_array[:,2] = clay_subduct
     variable_point_array[:,3] = step_changes[clay_sediment,:]
     variable_point_array[:,4] = step_changes[clay_sediment,:] + clay_subduct - clay_prod
@@ -584,10 +681,11 @@ function create_timeseries_charts(  )
         diags_timeseries[diag_index(
         "pelagic_CaCO3_deposition_rate"),:]
     variable_point_array[:,1] = CaCO3_prod
-    CaCO3_subduct = frac_diags_timeseries[frac_diag_index(
+    CaCO3_subduct = subduction_rates[CaCO3_sediment,:]
+        #=frac_diags_timeseries[frac_diag_index(
         "ocean_subduct_sediment_fraction_thickness"),CaCO3_sediment,:] +
         frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]
+        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]=#
     variable_point_array[:,2] = CaCO3_subduct
     variable_point_array[:,3] = step_changes[CaCO3_sediment,:]
     variable_point_array[:,4] = step_changes[CaCO3_sediment,:] + CaCO3_subduct - CaCO3_prod
@@ -610,13 +708,15 @@ function create_timeseries_charts(  )
     units_label = "m3"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
+
     clay_inv = land_inventory_timeseries[clay_sediment,:] .+ ocean_inventory_timeseries[clay_sediment,:]
     clay_prod = cum_diags_timeseries[diag_index(
         "crust_clay_source_rate"),:]
-    clay_subduct = cum_frac_diags_timeseries[frac_diag_index(
+    clay_subduct = cum_subduction_rates[clay_sediment,1:end]
+        #=cum_frac_diags_timeseries[frac_diag_index(
         "ocean_subduct_sediment_fraction_thickness"),clay_sediment,:] +
         cum_frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]# .+ clay_inv[1]
+        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]# .+ clay_inv[1]=#
     variable_point_array[:,1] = clay_inv
     variable_point_array[:,2] = clay_prod #.+ clay_inv[1]
     variable_point_array[:,3] = clay_subduct# .+ clay_inv[1]
@@ -632,10 +732,11 @@ function create_timeseries_charts(  )
         "coastal_CaCO3_flux"),:] .+
         cum_diags_timeseries[diag_index(
         "pelagic_CaCO3_deposition_rate"),:]
-    CaCO3_subduct = cum_frac_diags_timeseries[frac_diag_index(
+    CaCO3_subduct = cum_subduction_rates[CaCO3_sediment,1:end]
+        #=cum_frac_diags_timeseries[frac_diag_index(
         "ocean_subduct_sediment_fraction_thickness"),CaCO3_sediment,:] +
         cum_frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]# .+ clay_inv[1]
+        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]# .+ clay_inv[1]=#
     variable_point_array[:,1] = CaCO3_inv
     variable_point_array[:,2] = CaCO3_prod #.+ clay_inv[1]
     variable_point_array[:,3] = CaCO3_subduct# .+ clay_inv[1]

@@ -25,12 +25,18 @@ cd( base_directory * "/" * code_base_directory )
 rotations = read_rotation_file("1000_0_rotfile_Merdith_et_al.rot")
 norotation = rotation2matrix(rotations[1])
 orogenic_events = create_orogenies()
+
 setup_working_directories()
 filename = base_directory * "/" * code_base_directory * "/" * "plate_ID_changes.bson"
 BSON.@load filename plateID_change_log 
 
 create_everything( earliesttime ) 
-#step_everything()
+#
+#world = read_world(440.)
+#plates = read_plates()
+#step_tectonics()
+#
+step_everything()
 ##
 
 #@time 
@@ -40,13 +46,13 @@ create_everything( earliesttime )
 ##
 if enable_eyeball_changing_plateIDs
     filename = base_directory * "/" * code_base_directory * "/" * 
-        "plate_ID_changes_by_" * string( time_step ) * ".bson"
+        "plate_ID_changes_by_" * string( main_time_step ) * ".bson"
     BSON.@load filename change_log
     global plateID_change_log = change_log
 end
 ##
 run_timeseries()
-# + time_step )
+# + main_time_step )
 #world = read_world(501)
 #plates = read_plates()
 #run_timeseries()

@@ -19,7 +19,7 @@ function land_bulk_sediment_transport( original_elevation_field, diffusive_mask,
                 if subaereal_blob[ix,iy] == 1
                     land_sediment_deposition_rates[ix,iy] = 
                         ( altered_elevation_field[ix,iy] - original_elevation_field[ix,iy] ) /
-                        time_step / sediment_freeboard_expression
+                        main_time_step / sediment_freeboard_expression
                 end
             end
         end 
@@ -75,7 +75,7 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
         end
         R = Float64[ altered_elevation_field[ix,iy] +
             bulk_sediment_source[ix,iy] * # meters/Myr
-            time_step * # meters / step
+            main_time_step * # meters / step
             sediment_freeboard_expression ]
         new_elevation = A \ R
         altered_elevation_field[ix,iy] = new_elevation
@@ -138,7 +138,7 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
                 end
             end
             R[end] += bulk_sediment_source[ix,iy] * # meters / Myr
-                time_step * sediment_freeboard_expression # meters
+                main_time_step * sediment_freeboard_expression # meters
         end
 
         new_elevation_list = lu(A) \ R
@@ -146,7 +146,7 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
         for i_pos = 1:list_pos_filled
             ix = list_x[i_pos]; iy = list_y[i_pos]
             #sed_depo = ( new_elevation_list[i_pos] - elevation_field[ix,iy] ) /
-            #    time_step # meters / Myr
+            #    main_time_step # meters / Myr
             #set_diag("sediment_deposition_rate",ix,iy,sed_depo)
             altered_elevation_field[ix,iy] = new_elevation_list[i_pos]
         end
@@ -160,7 +160,7 @@ function check_for_bedrock_exposure( land_sediment_deposition_rate_field )
     # have to be preserved 
     n_denuded = 0
     sediment_deposition_meters = 
-    land_sediment_deposition_rate_field .* time_step
+    land_sediment_deposition_rate_field .* main_time_step
     total_sediment_thickness = world.sediment_thickness
     new_total_sediment_thickness = total_sediment_thickness .+ 
         sediment_deposition_meters 
@@ -184,7 +184,7 @@ function land_sediment_fraction_transport( new_elevation_field,
     combined_land_sediment_fraction_deposition_rates = 
         fill(0.,nx,ny,n_sediment_types)
     sediment_deposition_meters = 
-        land_sediment_deposition_rate_field .* time_step
+        land_sediment_deposition_rate_field .* main_time_step
     old_total_sediment_thickness = world.sediment_thickness
     new_total_sediment_thickness = old_total_sediment_thickness .+
         sediment_deposition_meters
@@ -217,7 +217,7 @@ function land_sediment_fraction_transport( new_elevation_field,
                 for i_sedtype in 1:n_sediment_types
                     combined_land_sediment_fraction_deposition_rates[ix,iy,i_sedtype] =
                         - world.sediment_thickness[ix,iy] * 
-                        world.sediment_surface_fractions[ix,iy,i_sedtype] / time_step
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] / main_time_step
                 end
             end
         end
@@ -254,7 +254,7 @@ function land_area_sediment_fraction_transport(
 
     land_sediment_fraction_deposition_rates = fill(0.,nx,ny,n_sediment_types)
     sediment_deposition_meters = 
-        land_sediment_deposition_rate_field .* time_step
+        land_sediment_deposition_rate_field .* main_time_step
     old_total_sediment_thickness = world.sediment_thickness
     new_total_sediment_thickness = old_total_sediment_thickness .+
         sediment_deposition_meters
@@ -327,13 +327,13 @@ function land_area_sediment_fraction_transport(
                 end =#
                 old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
                 R = old_inventory + 
-                    sediment_source_fields[ix,iy,i_sedtype] * time_step
+                    sediment_source_fields[ix,iy,i_sedtype] * main_time_step
                 new_inventory = A \ R   
                 #new_fraction = new_inventory / 
                 #    new_total_sediment_thickness[ix,iy]
                 fraction_deposition_rate = 
                     ( new_inventory - old_inventory ) / 
-                    time_step
+                    main_time_step
                 land_sediment_fraction_deposition_rates[ix,iy,i_sedtype] =
                     fraction_deposition_rate
                     #set_frac_diag("land_sediment_fraction_deposition_rate",
@@ -470,7 +470,7 @@ function land_area_sediment_fraction_transport(
                 old_inventory = old_column_fraction_inventory[ix,iy,i_sedtype]
                 push!(old_inventory_list,old_inventory)
                 push!(R, old_inventory + 
-                    sediment_source_fields[ix,iy,i_sedtype] * time_step )
+                    sediment_source_fields[ix,iy,i_sedtype] * main_time_step )
             end
             new_inventory_list = lu_A \ R
             #new_fraction_field = fill(0.,nx,ny)
@@ -484,7 +484,7 @@ function land_area_sediment_fraction_transport(
                 #new_fraction_field[ix,iy] = new_fraction
                 fraction_deposition_rate = 
                     ( new_inventory_list[i_pos] - old_inventory_list[i_pos] ) / 
-                    time_step
+                    main_time_step
                 land_sediment_fraction_deposition_rates[ix,iy,i_sedtype] =
                     fraction_deposition_rate
             end
@@ -517,20 +517,20 @@ function land_bulk_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sin
                 v_diffcoeffs = get_vertical_diffcoeff(land_base_diffcoeff,iy)
                 if ocean_sink[ix_left(ix),iy] > 0.
                     volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[2] * # meters / step
-                        areabox[iy] / time_step  # m3 / Myr
+                        areabox[iy] / main_time_step  # m3 / Myr
                     coastal_sediment_runoff_flux[ix_left(ix),iy] +=
                         volume_flux / areabox[iy]
                 end
                 if ocean_sink[ix_right(ix),iy] > 0.
                     volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[1] * 
-                        areabox[iy] / time_step
+                        areabox[iy] / main_time_step
                     coastal_sediment_runoff_flux[ix_right(ix),iy] +=
                         volume_flux / areabox[iy]
                 end
                 if iy > 1
                     if ocean_sink[ix,iy-1] > 0  
                         volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[2] * 
-                            areabox[iy] / time_step
+                            areabox[iy] / main_time_step
                         coastal_sediment_runoff_flux[ix,iy-1] +=
                             volume_flux / areabox[iy-1]
                     end
@@ -538,7 +538,7 @@ function land_bulk_runoff_fluxes( new_elevation_field, subaereal_mask, ocean_sin
                 if iy < ny
                     if ocean_sink[ix,iy+1] > 0 
                         volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[1] * 
-                            areabox[iy] / time_step
+                            areabox[iy] / main_time_step
                         coastal_sediment_runoff_flux[ix,iy+1] +=
                             volume_flux / areabox[iy+1]
                     end
@@ -574,7 +574,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
                     for i_sedtype in 1:n_sediment_types
                         volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[2] * # meters / step
                             new_sediment_fractions[ix,iy,i_sedtype] * 
-                            areabox[iy] / time_step  # m3 / Myr
+                            areabox[iy] / main_time_step  # m3 / Myr
                         coastal_sediment_fraction_runoff_flux[ix_left(ix),iy,i_sedtype] +=
                             volume_flux / areabox[iy]
                         #accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
@@ -587,7 +587,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
                     for i_sedtype in 1:n_sediment_types
                         volume_flux = new_elevation_field[ix,iy] * h_diffcoeffs[1] * 
                             new_sediment_fractions[ix,iy,i_sedtype] * 
-                            areabox[iy] / time_step
+                            areabox[iy] / main_time_step
                         coastal_sediment_fraction_runoff_flux[ix_right(ix),iy,i_sedtype] +=
                             volume_flux / areabox[iy]
                         #accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
@@ -601,7 +601,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
                         for i_sedtype in 1:n_sediment_types
                             volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[2] * 
                                 new_sediment_fractions[ix,iy,i_sedtype] *
-                                areabox[iy] / time_step
+                                areabox[iy] / main_time_step
                             coastal_sediment_fraction_runoff_flux[ix,iy-1,i_sedtype] +=
                                 volume_flux / areabox[iy-1]
                             #accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
@@ -616,7 +616,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
                         for i_sedtype in 1:n_sediment_types
                             volume_flux = new_elevation_field[ix,iy] * v_diffcoeffs[1] * 
                                 new_sediment_fractions[ix,iy,i_sedtype] *
-                                areabox[iy] / time_step
+                                areabox[iy] / main_time_step
                             coastal_sediment_fraction_runoff_flux[ix,iy+1,i_sedtype] +=
                                 volume_flux / areabox[iy+1]
                             #accum_frac_diag( "coastal_sediment_fraction_runoff_flux",
@@ -724,25 +724,25 @@ function diffusive_flux_cell(elevation,ix,iy,domain,direction)
         end
     end
     d_elevation = elevation[ix,iy] - neighbor_elevation
-    dhdt = diffcoeff * d_elevation / time_step
+    dhdt = diffcoeff * d_elevation / main_time_step
     flux = dhdt / sediment_freeboard_expression
     return dhdt
 end
 function get_vertical_diffcoeff(base_diffcoeff,iy)
     # cell value += D1 (E+ - E0) + D2 (E- - E0)
-    diffusive_time_step = time_step * 1.E6 # years
+    diffusive_main_time_step = main_time_step * 1.E6 # years
     dx_gradient = delta_y; dx_selfwidth = delta_x[iy]
     if iy == ny # for mixing across the pole, tie things together
         dx_interface = delta_x[iy] / 2
         diffup = base_diffcoeff * # m2 / yr * delta_elevation would give m3 / yr
-            diffusive_time_step  /    # m3 
+            diffusive_main_time_step  /    # m3 
             dx_gradient *         # to get dElev/dx
             dx_interface /        # m3 across the interface
             dx_selfwidth / dx_gradient  # m elevation change in local box
     else
         dx_interface = ( delta_x[iy] + delta_x[iy+1] ) / 2
         diffup = base_diffcoeff * # m2 / yr * delta_elevation would give m3 / yr
-            diffusive_time_step  /    # m3 
+            diffusive_main_time_step  /    # m3 
             dx_gradient *         # to get dElev/dx
             dx_interface /        # m3 across the interface
             dx_selfwidth / dx_gradient  # m elevation change in local box
@@ -750,14 +750,14 @@ function get_vertical_diffcoeff(base_diffcoeff,iy)
     if iy == 1
         dx_interface = delta_x[iy] / 2
         diffdown = base_diffcoeff * # m2 / yr * delta_elevation would give m3 / yr
-            diffusive_time_step  /    # m3 
+            diffusive_main_time_step  /    # m3 
             dx_gradient *         # to get dElev/dx
             dx_interface /        # m3 across the interface
             dx_selfwidth / dx_gradient  # m elevation change in local box
     else
         dx_interface = ( delta_x[iy] + delta_x[iy-1] ) / 2
         diffdown = base_diffcoeff * # m2 / yr * delta_elevation would give m3 / yr
-            diffusive_time_step  /    # m3 
+            diffusive_main_time_step  /    # m3 
             dx_gradient *         # to get dElev/dx
             dx_interface /        # m3 across the interface
             dx_selfwidth / dx_gradient  # m elevation change in local box
@@ -767,9 +767,9 @@ end
 function get_horizontal_diffcoeff(base_diffcoeff,iy)
     dx_width = delta_y; dx_interface = delta_y
     dx_gradient = max( delta_x[iy], delta_y / 2. )
-    diffusive_time_step = time_step * 1.E6
+    diffusive_main_time_step = main_time_step * 1.E6
     diffcoeff = base_diffcoeff * # m2 / yr * delta_elevation would give m3 / yr
-        diffusive_time_step  /    # m3 
+        diffusive_main_time_step  /    # m3 
         dx_gradient *         # to get dElev/dx
         dx_interface /        # m3 across the interface
         dx_width / dx_gradient  # m elevation change in local box

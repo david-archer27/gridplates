@@ -81,7 +81,7 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
                 if world.freeboard[ix,iy] < shelf_depth_CaCO3
                     accom_meters = ( shelf_depth_CaCO3 - world.freeboard[ix,iy] ) /
                         sediment_freeboard_expression
-                    shallow_rates[ix,iy] = accom_meters / time_step
+                    shallow_rates[ix,iy] = accom_meters / main_time_step
                 end
             end
         end

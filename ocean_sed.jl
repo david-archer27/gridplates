@@ -208,7 +208,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
     potential_freeboard = world.freeboard .+ 
         ( incoming_fluxes[:,:,0] .+ 
         already_depositing_fluxes[:,:,0] ) .* 
-        time_step .* sediment_freeboard_expression 
+        main_time_step .* sediment_freeboard_expression 
     # 
     for ix in 1:nx
         for iy in 1:ny
@@ -231,7 +231,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                                 volume_field(depositing_fluxes[:,:,0])+volume_field(coastal_overflow_fluxes[:,:,0]) +
                                 volume_field(trapped_overflow_fluxes[:,:,0]))
                                 =#
-                        incoming_meters = incoming_fluxes[ix,iy,0] * time_step
+                        incoming_meters = incoming_fluxes[ix,iy,0] * main_time_step
                         excess_meters = ( potential_freeboard[ix,iy] - shelf_depth_clastics ) /
                             sediment_freeboard_expression
                         meters_exported = min( excess_meters, incoming_meters )
@@ -243,11 +243,11 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                             sum_check += fraction
                             push!(fractions_exported, fraction)
                             depositing_fluxes[ix,iy,i_sedtype] +=
-                                meters_deposited_locally * fraction / time_step
+                                meters_deposited_locally * fraction / main_time_step
                         end
-                        incoming_fluxes[ix,iy,0] -= meters_exported / time_step
+                        incoming_fluxes[ix,iy,0] -= meters_exported / main_time_step
                         depositing_fluxes[ix,iy,0] +=
-                            meters_deposited_locally / time_step
+                            meters_deposited_locally / main_time_step
 
                         if sum_check < 0.99 || sum_check > 1.01
                             error("sum_check error ",[ix,iy],incoming_fluxes[ix,iy,:])
@@ -279,10 +279,10 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                                 n_boxes = length(depositing_border_neighbor_coords)
                                 #println("dumping into ",n_boxes," neighbors")
                                 coastal_overflow_fluxes[ixn,iyn,0] += 
-                                    mean_meters_depositing / time_step
+                                    mean_meters_depositing / main_time_step
                                 for i_sedtype in 1:n_sediment_types                                
                                     coastal_overflow_fluxes[ixn,iyn,i_sedtype] +=
-                                        mean_meters_depositing / time_step * 
+                                        mean_meters_depositing / main_time_step * 
                                         fractions_exported[i_sedtype]
                                 end
                                 sum_check = fractions_exported[1] + fractions_exported[2]
@@ -296,11 +296,11 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                             n_trapped += 1
                             for i_sedtype in 1:n_sediment_types 
                                 trapped_overflow_fluxes[ix,iy,i_sedtype] += 
-                                    meters_exported / time_step * 
+                                    meters_exported / main_time_step * 
                                     fractions_exported[i_sedtype]
                             end
                             trapped_overflow_fluxes[ix,iy,0] += 
-                                meters_exported / time_step
+                                meters_exported / main_time_step
 
                         end
                         #=println("after ",volume_field(incoming_fluxes[:,:,0])," ",

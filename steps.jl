@@ -1,21 +1,22 @@
 function step_everything(  ) # rebuilds the world at the new time
     local world_grid_sediment_change,initial_plate_inventories,
-        initial_world_inventories,rearranged_world_inventories
+        initial_world_inventories, after_tectonics_world_inventories
 
     if enable_step_everything_diagnostics
         initial_plate_inventories = global_plate_sediment_inventories()
         initial_world_inventories = world_sediment_inventories(  )
         world_grid_sediment_change = world.sediment_thickness
     end
+
     step_tectonics(  )
+
     if enable_step_everything_diagnostics
-        rearranged_world_inventories = world_sediment_inventories(  )
+        after_tectonics_world_inventories = world_sediment_inventories(  )
     end
+
     world.elevation_offset = ocean_thermal_boundary_layer()
-    #world.crust_age .+= time_step
-    # sets world.elevation_offset for aging ocean crust
-
-
+    world.sealevel = get_sealevel( world.age )
+    
     step_geomorph(  ) # plugs in here or operates standalone on world grid only
     # updates world.sediment_thickness and layers, returns in isostatic equilibrium
 
@@ -24,29 +25,29 @@ function step_everything(  ) # rebuilds the world at the new time
 
     if enable_step_everything_diagnostics
         subduction_rates = fill(0.,0:n_sediment_types)
-        subduction_rates[0] = 
-            volume_field(get_diag("ocean_subduct_sediment_thickness")) + 
-            volume_field(get_diag("continent_subduct_sediment_thickness")) 
+        subduction_rates[1:n_sediment_types] .= 
+            world.subducted_ocean_sediment_volumes .+
+            world.subducted_land_sediment_volumes
         for i_sedtype in 1:n_sediment_types
-            subduction_rates[i_sedtype] =
-                volume_field(get_frac_diag("ocean_subduct_sediment_fraction_thickness")[:,:,i_sedtype]) +
-                volume_field(get_frac_diag("continent_subduct_sediment_fraction_thickness")[:,:,i_sedtype])
+            subduction_rates[0] += subduction_rates[i_sedtype]
         end
         world_grid_sediment_change = world_grid_sediment_change .* -1. .+ world.sediment_thickness
         set_diag("world_grid_sediment_change", world_grid_sediment_change)
         geomorphed_world_inventories = world_sediment_inventories(  )
         final_plate_inventories = global_plate_sediment_inventories()
-        #deposition_rates = [ volume_field(get_diag("global_sediment_deposition_rate")) ]
-        #clay_flux = volume_field(get_diag("crust_clay_source_rate"))
-        #CaCO3_flux = volume_field(get_frac_diag("global_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment])
         source_fluxes = fill(0.,0:n_sediment_types)
         deposition_rates = fill(0.,0:n_sediment_types)
         denuded_land_src = fill(0.,0:n_sediment_types)
         cont2ocn_redist_sources = fill(0.,0:n_sediment_types)
+        ocn2cont_redist_sources = fill(0.,0:n_sediment_types)
         source_fluxes[clay_sediment] = 
             volume_field(get_diag("crust_clay_source_rate")) # no denuded sediment
         source_fluxes[CaCO3_sediment] = 
-            volume_field(get_frac_diag("global_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment])
+            volume_field(get_diag("coastal_CaCO3_flux")) +
+            volume_field(get_diag("pelagic_CaCO3_deposition_rate")) +
+            volume_field(get_diag("continental_CaCO3_deposition_rate"))
+            #volume_field(get_frac_diag("global_sediment_fraction_deposition_rate")[:,:,CaCO3_sediment])
+
         for i_sedtype in 1:n_sediment_types
             deposition_rates[i_sedtype] = volume_field(
                 get_frac_diag("global_sediment_fraction_deposition_rate",i_sedtype))
@@ -55,41 +56,47 @@ function step_everything(  ) # rebuilds the world at the new time
             cont2ocn_redist_sources[i_sedtype] = 
                 volume_field( get_frac_diag(
                     "continent_2_ocean_sediment_fraction_displaced",i_sedtype) )
+            ocn2cont_redist_sources[i_sedtype] = 
+                    volume_field( get_frac_diag(
+                        "ocean_2_continent_sediment_fraction_displaced",i_sedtype) )
             source_fluxes[0] += source_fluxes[i_sedtype]
             deposition_rates[0] += deposition_rates[i_sedtype]
             denuded_land_src[0] += denuded_land_src[i_sedtype]
             cont2ocn_redist_sources[0] += cont2ocn_redist_sources[i_sedtype]
+            ocn2cont_redist_sources[0] += ocn2cont_redist_sources[i_sedtype]
         end 
 
-        #source_fluxes .-= denuded_land_src
+        #source_fluxes .-= denuded_land_src .- ocn2cont_redist_sources
 
-        #world_change_rates = ( geomorph_world_inventories .- initial_world_inventories) ./ time_step
+        #world_change_rates = ( geomorph_world_inventories .- initial_world_inventories) ./ main_time_step
         #world_balances = world_change_rates .+ subduction_rates .- deposition_rates
-        plate_change = ( final_plate_inventories .- initial_plate_inventories ) ./ time_step
+        plate_change = ( final_plate_inventories .- initial_plate_inventories ) ./ main_time_step
         plate_balances = plate_change .+ subduction_rates .- deposition_rates
-        geomorph_change = ( geomorphed_world_inventories .- rearranged_world_inventories ) ./ time_step 
-        step_change = ( geomorphed_world_inventories .- initial_world_inventories ) ./ time_step 
+        geomorph_change = ( geomorphed_world_inventories .- after_tectonics_world_inventories ) ./ main_time_step 
+        step_change = ( geomorphed_world_inventories .- initial_world_inventories ) ./ main_time_step 
  
         logging_println()
         logging_println(" world budget init ", initial_world_inventories)
-        logging_println("        rearranged ", rearranged_world_inventories)
-        logging_println("               bal ", ( rearranged_world_inventories .- initial_world_inventories ) ./
-            time_step .+ subduction_rates ) #.+ crust_transition_ocean_src )
+        logging_println("   after tectonics ", after_tectonics_world_inventories)
+        #logging_println("               bal ", ( after_tectonics_world_inventories .- initial_world_inventories ) ./
+        #    main_time_step .+ subduction_rates ) #.+ crust_transition_ocean_src )
  
         logging_println("     source inputs ", source_fluxes)
         logging_println("cont2ocn trans flx ", cont2ocn_redist_sources)
+        logging_println("ocn2cont trans flx ", ocn2cont_redist_sources)
         logging_println("    final geomorph ", geomorphed_world_inventories)
         logging_println("       change rate ", geomorph_change )
         logging_println("    crust tran src ", cont2ocn_redist_sources)
         logging_println(" geomorph mass bal ", geomorph_change .- deposition_rates )
         logging_println(" geomorph flux bal ", source_fluxes .- # genuine erosion
             deposition_rates .+ 
-            cont2ocn_redist_sources ) # because some of it is redeposition
+            cont2ocn_redist_sources .+ ocn2cont_redist_sources )
+            
         logging_println("        deposition ", deposition_rates)
         logging_println("        subduction ", subduction_rates)
         logging_println("  world cum change ", step_change )
         logging_println("     world cum bal ", step_change .+ subduction_rates .- 
-            source_fluxes .+ cont2ocn_redist_sources )
+            source_fluxes ) # .+ ocn2cont_redist_sources ) # .+ cont2ocn_redist_sources )
         
         logging_println()
         logging_println("plate budgets orig ", initial_plate_inventories)
@@ -122,33 +129,45 @@ function step_tectonics(  )
         remasked_plate_inventories, #remasked_world_inventories, delete_old_plate_inventories,
         subduction_rates, #subduction_balances,
         initial_world_inventories, filled_world_inventories,
-        updated_world_inventories, orogenic_uplift_rates#land_trapped # , world_grid_sediment_change
+        updated_world_inventories, orogenic_uplift_rates
+        #land_trapped # , world_grid_sediment_change
 
-    #world.age -= time_step
+    #world.age -= main_time_step
     #world.sealevel = get_sea_level( world.age )
 
-    #logging_println("beginning ", world.age - time_step, " Myr ", get_geo_interval())
+    #logging_println("beginning ", world.age - main_time_step, " Myr ", get_geo_interval())
     logging_println()
     logging_println("Plate tectonics ")
 
-    accumulated_ocean_sediment_subduction = fill(0.,nx,ny,n_sediment_types)
-    accumulated_continent_sediment_subduction = fill(0.,nx,ny,n_sediment_types)
-    n_plate_substeps = Int( time_step / sub_time_step )
-    for i_plate_substep in 1:n_plate_substeps
+    subducted_land_sediment_volumes = fill(0.,n_sediment_types)
+    subducted_ocean_sediment_volumes = fill(0.,n_sediment_types)
+    orogenic_uplift_rates = fill(0.,nx,ny,0:2) # total, continental, subduction
+    initial_world_inventories = fill(0.,0:2)
+    update_ID_plate_inventories = fill(0.,0:2)
+    n_plate_substeps = Int( main_time_step / sub_time_step )
+    clear_world_process_arrays() 
+    initial_plate_inventories = fill(0.,0:2)
+    if enable_step_tectonics_plate_diagnostics
+        initial_plate_inventories = global_plate_sediment_inventories()
+    end
+    initial_world_inventories = fill(0.,0:2)
+    if enable_step_tectonics_world_diagnostics || eliminate_regrid_drift
+        initial_world_inventories = world_sediment_inventories(  )
+    end
 
-        clear_world_process_arrays() 
-        if enable_step_tectonics_world_diagnostics || eliminate_regrid_drift
-            #initial_plate_inventories = global_plate_sediment_inventories()
-            initial_world_inventories = world_sediment_inventories(  )
-            #world_grid_sediment_change = world.sediment_thickness
-        end
-        if enable_step_tectonics_plate_diagnostics
-            initial_plate_inventories = global_plate_sediment_inventories()
+    for i_plate_substep in 1:n_plate_substeps
+        
+        if enable_substep_tectonics_diagnostics 
+            substep_initial_world_inventories = world_sediment_inventories(  )
         end
 
         world.age -= sub_time_step
         logging_println(); 
         logging_println("  substepping ",world.age," Myr")
+        if enable_substep_tectonics_diagnostics
+            substep_initial_plate_inventories = global_plate_sediment_inventories()
+            logging_println("  substep init plate ", substep_initial_plate_inventories)
+        end
         oldIDmap = world.plateID
         newIDmap = read_plateIDs(world.age)
         world.plateID = newIDmap
@@ -166,40 +185,71 @@ function step_tectonics(  )
         else
             update_changing_plateIDs(oldIDmap,newIDmap)
         end
-        if enable_step_tectonics_plate_diagnostics
-            update_ID_plate_inventories = global_plate_sediment_inventories()
+        if enable_substep_tectonics_diagnostics
+            substep_update_ID_plate_inventories = global_plate_sediment_inventories()
+            logging_println("          update IDs ", substep_update_ID_plate_inventories)
         end
+
         resolve_rotation_matrices()
         fill_world_from_plates() # build the new world grid
+
         world.crust_age .+= sub_time_step
-        remask_plates()
-        if enable_step_tectonics_plate_diagnostics
-            remask_plate_inventories = global_plate_sediment_inventories()
-            logging_println("      tectonics init ", initial_plate_inventories)
-            logging_println("          update IDs ", update_ID_plate_inventories)
-            logging_println("              remask ", update_ID_plate_inventories)
-            logging_println("       plate inv bal ", ( update_ID_plate_inventories .- initial_plate_inventories ) ./
-                sub_time_step )
+
+        substep_subducted_land_sediment_volumes, substep_subducted_ocean_sediment_volumes,
+            subduction_footprint = 
+            remask_plates() 
+
+        #error("stopping")
+
+        substep_subducted_sediment_volumes = 
+            substep_subducted_land_sediment_volumes .+ 
+            substep_subducted_ocean_sediment_volumes
+        subducted_land_sediment_volumes .+= substep_subducted_land_sediment_volumes
+        subducted_ocean_sediment_volumes .+= substep_subducted_ocean_sediment_volumes
+        subducted_sediment_volumes = 
+            subducted_land_sediment_volumes .+ 
+            subducted_ocean_sediment_volumes
+        substep_remask_plate_inventories = fill(0.,0:n_sediment_types)
+        if enable_substep_tectonics_diagnostics
+            substep_remask_plate_inventories = global_plate_sediment_inventories()
+            logging_println("              remask ", substep_remask_plate_inventories[1:end])
+            logging_println("             subduct ", substep_subducted_sediment_volumes[1:end])
+            logging_println("       plate inv bal ", ( substep_remask_plate_inventories[1:end] .- 
+                substep_initial_plate_inventories[1:end] .+ substep_subducted_sediment_volumes ) )# ./
+                #sub_time_step )
+            logging_println("")
         end
         
         if enable_orogeny
-            orogenic_uplift_rates = orogeny()
+            orogenic_uplift_rates = orogeny( subduction_footprint ) # uses ocean_subduct_sediment_plate_thickness 
+            # returns a global field, not just continental, 
+            # because plot points change sometimes
+            apply_orogeny_fluxes_to_world( orogenic_uplift_rates[:,:,0] )
         end
-        orogenic_erosion_rate_field = generate_orogenic_erosion_fluxes()
+        #=
+        orogenic_erosion_rate_field = 
+            generate_orogenic_erosion_fluxes( )
+            # also global
         net_crust_change_rate = orogenic_uplift_rates[:,:,0] .- 
             orogenic_erosion_rate_field
         apply_orogeny_fluxes_to_world( net_crust_change_rate )
+        =#
         smooth_masked_field!(world.crust_thickness, is_land(), orogeny_smooth_coeff)
-        isostacy()
+        isostacy() # for erosion rate parameterization
         
         if enable_watch_orogeny_substeps
-            scene = plot_field((world.crust_thickness .- 16500) .* is_land())
+            scene = plot_field((world.crust_thickness .- 16500) .* is_land() ./ 1000. )
             plot_add_plate_boundaries!(scene)
             plot_add_continent_outlines!(scene)
             display(scene)
             sleep(2.)
         end
-        apply_tectonics_changes_to_plates()    
+        apply_tectonics_changes_to_plates( orogenic_uplift_rates[:,:,0] )    
+        #=if enable_step_tectonics_plate_diagnostics
+            substep_applied_plate_inventories = global_plate_sediment_inventories()
+            logging_println("             applied ", substep_applied_plate_inventories)
+        end=#
+ 
         #smooth_continental_crust_thickness()
         #tcix,tciy = highest_xy_field(world.crust_thickness)
         #thickest_crust = world.crust_thickness[tcix,tciy]
@@ -207,58 +257,70 @@ function step_tectonics(  )
         logging_println("    thickest, highest crust ", 
             [ field_max( world.crust_thickness ), field_max( world.freeboard )])
         logging_println("    fastest cont / subd uplift ", 
-            [ 
-            field_max( orogenic_uplift_rates[:,:,1] ), field_max( orogenic_uplift_rates[:,:,2] )])
+            [ field_max( orogenic_uplift_rates[:,:,1] ), field_max( orogenic_uplift_rates[:,:,2] )])
         #ulix,uliy = highest_xy_field( uplift )
         #erosion = get_diag("crust_erosion_rate")
         #logging_println("uplift fastest, net ", [field_max(uplift),field_max(erosion)])
-        accumulated_ocean_sediment_subduction .+= 
-            get_frac_diag("ocean_subduct_sediment_fraction_thickness") 
-        accumulated_continent_sediment_subduction .+=
-            get_frac_diag("continent_subduct_sediment_fraction_thickness") 
-            
-    end
+
+        #=if enable_step_tectonics_world_diagnostics
+            ocn_subd = subducted_ocean_sediment_volumes ./ 
+                ( i_plate_substep * sub_time_step )
+            cont_subd = subducted_land_sediment_volumes ./ 
+                ( i_plate_substep * sub_time_step )
+            logging_println("    accum subduc  ", 
+            [ ocn_subd, cont_subd, ocn_subd .+ cont_subd ])
+        end=#
+
+    end # substep loop
+
     # look for plates that change their identities, move stuff between them
     # sets plate.tectonics to record plateID changes
     #delete_old_plates()
     set_diag("continent_orogenic_uplift_rate",orogenic_uplift_rates[:,:,1] .* 
         eq_mask(world.crust_type,continent_crust) ) 
     set_diag("subduction_orogenic_uplift_rate",orogenic_uplift_rates[:,:,2] .* 
-        eq_mask(world.crust_type,continent_crust) )  # meters / Myr
-    set_frac_diag("ocean_subduct_sediment_fraction_thickness",
-        accumulated_ocean_sediment_subduction)
-    set_frac_diag("continent_subduct_sediment_fraction_thickness",
-        accumulated_ocean_sediment_subduction)
+        eq_mask(world.crust_type,continent_crust) )  # meters / Myr, snapshot not accumulated
+    world.subducted_land_sediment_volumes = subducted_land_sediment_volumes ./ 
+        main_time_step
+    world.subducted_ocean_sediment_volumes = subducted_ocean_sediment_volumes ./ 
+        main_time_step
+    #set_frac_diag("ocean_subduct_sediment_fraction_thickness",
+    #    accumulated_ocean_sediment_subduction ./ main_time_step )
+    #set_frac_diag("continent_subduct_sediment_fraction_thickness",
+    #    accumulated_continent_sediment_subduction ./ main_time_step )
 
     #resolve_rotation_matrices()
     # set rotation matrices to the new time
-     
-    if enable_step_tectonics_world_diagnostics
-        filled_world_inventories = world_sediment_inventories(  )
+    substepped_world_inventories = fill(0.,0:n_sediment_types)
+    if enable_step_tectonics_world_diagnostics || eliminate_regrid_drift
+        substepped_world_inventories = world_sediment_inventories(  )
     end
 
     if enable_cont_update_from_files
         update_world_continents_from_file()
+        #apply_tectonics_changes_to_plates()  done later in apply_geomorph_changes_to_plates
     end
 
+    updated_ID_world_inventories = fill(0.,0:n_sediment_types)
     if enable_step_tectonics_world_diagnostics || eliminate_regrid_drift
-        updated_world_inventories = world_sediment_inventories(  )
+        updated_ID_world_inventories = world_sediment_inventories(  )
     end
-   
+    updated_ID_plate_inventories = fill(0.,0:n_sediment_types)
+    if enable_step_tectonics_plate_diagnostics
+        updated_ID_plate_inventories = global_plate_sediment_inventories()
+    end
     subduction_rates = fill(0.,0:n_sediment_types)
-    subduction_rates[0] = 
-        volume_field(get_diag("ocean_subduct_sediment_thickness")) + 
-        volume_field(get_diag("continent_subduct_sediment_thickness")) 
+    subduction_rates[1:n_sediment_types] .= 
+        world.subducted_land_sediment_volumes .+ 
+        world.subducted_ocean_sediment_volumes
     for i_sedtype in 1:n_sediment_types
-        subduction_rates[i_sedtype] =
-            volume_field(get_frac_diag("ocean_subduct_sediment_fraction_thickness")[:,:,i_sedtype]) +
-            volume_field(get_frac_diag("continent_subduct_sediment_fraction_thickness")[:,:,i_sedtype])
+        subduction_rates[0] += subduction_rates[i_sedtype]
     end
+    uplifted_sediment = fill(0.,0:n_sediment_types)
+    demoted_sediment = fill(0.,0:n_sediment_types)
     if enable_step_tectonics_world_diagnostics || eliminate_regrid_drift
-        uplifted_sediment = fill(0.,0:n_sediment_types)
         uplifted_sediment[1:n_sediment_types] = 
             volume_fields(get_frac_diag("ocean_2_continent_sediment_fraction_displaced"))
-        demoted_sediment = fill(0.,0:n_sediment_types)
         demoted_sediment[1:n_sediment_types] = 
             volume_fields(get_frac_diag("continent_2_ocean_sediment_fraction_displaced"))
         for i_sedtype in 1:n_sediment_types
@@ -266,63 +328,83 @@ function step_tectonics(  )
             demoted_sediment[0] += demoted_sediment[i_sedtype]
         end
     end
-    world_cum_change = ( updated_world_inventories .- initial_world_inventories ) ./
-        time_step 
+    final_world_inventories = updated_ID_world_inventories # for init if not eliminate_regrid_drift
+    if eliminate_regrid_drift
+        #world_cum_change = ( substepped_world_inventories .- initial_world_inventories ) ./
+        #    main_time_step 
+        #tweaked_inv = substepped_world_inventories .- 
+        #    ( subduction_rates .+ world_cum_change .+ uplifted_sediment .+ demoted_sediment ) .* main_time_step
+        tweaked_inv = initial_world_inventories .- 
+            ( subduction_rates .+ uplifted_sediment .+ demoted_sediment ) .* main_time_step
+        imbalance_ratios = fill( 1., n_sediment_types )
+        for i_sedtype in 1:n_sediment_types
+            if updated_ID_world_inventories[i_sedtype] > 0
+                imbalance_ratios[i_sedtype] = tweaked_inv[i_sedtype] ./ 
+                    updated_ID_world_inventories[i_sedtype]
+            end
+        end
+        scale_global_sediment_components( imbalance_ratios[1:n_sediment_types] )
+        final_world_inventories = world_sediment_inventories(  )
+        logging_println("")
+        #logging_println("     world init ", initial_world_inventories)
+        #logging_println("      tectonics ", after_tectonics_world_inventories)
+        substepped_world_inventories
+        logging_println("  fudge factors ", imbalance_ratios)
+        logging_println("         fudged ", final_world_inventories)
+        logging_println("           slop ", final_world_inventories .- updated_ID_world_inventories)
+        logging_println("  cum world bal ", 
+            ( final_world_inventories .- initial_world_inventories ) ./
+            main_time_step .+ subduction_rates .+ uplifted_sediment .+ demoted_sediment )
+    end
+
+    world_cum_change = ( final_world_inventories .- initial_world_inventories ) ./
+        main_time_step 
     if enable_step_tectonics_plate_diagnostics
-        remasked_plate_inventories = global_plate_sediment_inventories()
-        plate_cum_change = ( remasked_plate_inventories .- update_ID_plate_inventories ) ./
-            time_step
+        final_plate_inventories = global_plate_sediment_inventories()
+        plate_cum_change = ( final_plate_inventories .- initial_plate_inventories ) ./
+            main_time_step
         plate_bal = plate_cum_change .+ 
             subduction_rates .+ # +ve because accounts for a loss
             uplifted_sediment .+ demoted_sediment # loss that will be go into ocean
         logging_println()
         logging_println("        plates init ", initial_plate_inventories)
-        logging_println("          update ID ", update_ID_plate_inventories)
-        logging_println("                bal ", update_ID_plate_inventories .- initial_plate_inventories )
-        logging_println("             remask ", remasked_plate_inventories)
-        logging_println("               rate ", ( remasked_plate_inventories .- update_ID_plate_inventories) / time_step )
+        logging_println("              final ", final_plate_inventories)
+        logging_println("                chg ", final_plate_inventories .- initial_plate_inventories )
+        #logging_println("             remask ", remasked_plate_inventories)
+        #logging_println("               rate ", ( remasked_plate_inventories .- update_ID_plate_inventories) / main_time_step )
         logging_println("          subducted ", subduction_rates)
         logging_println("   uplift scattered ", uplifted_sediment)
         logging_println("  demoted scattered ", demoted_sediment)
+        logging_println("             change ", plate_cum_change)
         logging_println("                bal ", plate_bal )
     end
     if enable_step_tectonics_world_diagnostics
         world_bal = world_cum_change .+ subduction_rates .+ 
             uplifted_sediment .+ demoted_sediment
+        logging_println()
         logging_println("         world init ", initial_world_inventories)
-        logging_println("             filled ", filled_world_inventories)
-        logging_println("   update from file ", updated_world_inventories)
+        logging_println("         substepped ", substepped_world_inventories)
+        logging_println("  changing plateIDs ", updated_ID_world_inventories)
+        logging_println("             fudged ", final_world_inventories)
         #logging_println("         land ", world_land_sediment_inventories())
         #logging_println("        ocean ", world_ocean_sediment_inventories())
-        logging_println("               rate ", ( updated_world_inventories .- initial_world_inventories ) ./ time_step )
+        logging_println("               rate ", ( final_world_inventories .- initial_world_inventories ) ./ main_time_step )
+        logging_println("          subducted ", subduction_rates)
+        logging_println("   uplift scattered ", uplifted_sediment)
+        logging_println("  demoted scattered ", demoted_sediment)
         logging_println("      cum world chg ", world_cum_change )
         logging_println("      cum world bal ", world_bal )
         logging_println()
     end
-    if eliminate_regrid_drift
-        tweaked_inv = updated_world_inventories .- 
-            ( subduction_rates .+ world_cum_change .+ uplifted_sediment .+ demoted_sediment ) .* time_step
-        imbalance_ratios = fill( 1., n_sediment_types )
-        for i_sedtype in 1:n_sediment_types
-            if updated_world_inventories[i_sedtype] > 0
-                imbalance_ratios[i_sedtype] = tweaked_inv[i_sedtype] ./ 
-                    updated_world_inventories[i_sedtype]
-            end
-        end
-        scale_global_sediment_components( imbalance_ratios[1:n_sediment_types] )
-        fudged_world_inventories = world_sediment_inventories(  )
-        logging_println("  fudge factors ", imbalance_ratios)
-        logging_println("         fudged ", fudged_world_inventories)
-        logging_println("  cum world bal ", ( fudged_world_inventories .- initial_world_inventories ) ./
-            time_step .+ subduction_rates .+ uplifted_sediment .+ demoted_sediment )
-    end
+    #error("stopping")
+   
 end
 function step_geomorph(  ) # requires previous run with tectonics to fill world diag arrays
 
     #= quickly skip tectonics for debugging
     step_tectonics(  )
     world.elevation_offset = ocean_thermal_boundary_layer()
-    world.crust_age .+= time_step
+    world.crust_age .+= main_time_step
     =#
 
     if enable_step_geomorph_diagnostics
@@ -354,9 +436,9 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
             else
                 #error([ix,iy,world.freeboard[ix,iy]])
                 world.geomorphology[ix,iy] = pelagic_seafloor
-                if world.crust_type[ix,iy] != ocean_crust
+                #=if world.crust_type[ix,iy] != ocean_crust
                     error([ix,iy,world.freeboard[ix,iy]])
-                end
+                end=#
             end
         end
     end
@@ -449,10 +531,11 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
             for iy in 1:ny
                 if world.geomorphology[ix,iy] == exposed_basement
                     land_sediment_deposition_rate_field[ix,iy] =
-                        - world.sediment_thickness[ix,iy] / time_step
+                        - world.sediment_thickness[ix,iy] / main_time_step
                 end
             end
         end
+        balance = 0.
         if enable_step_geomorph_diagnostics
             bulk_source_flux = volume_field( sediment_source_fields[:,:,0] .* is_land())
             bulk_deposition_flux = volume_field( land_sediment_deposition_rate_field )
@@ -483,12 +566,11 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
             need_another_loop = true
             #println("because n_denuded")
         end
-        #=if abs( bulk_deposition_flux - last_deposition_rate ) > abs( bulk_deposition_flux / 1.e6 )
+        #=if abs(balance) > 1.e6
             need_another_loop = true
             #println("because deposition ", abs( deposition - last_deposition_rate ) )
-            last_deposition_rate = bulk_deposition_flux
-        end
-        =#
+    #            last_deposition_rate = bulk_deposition_flux
+        end=#
         if n_loops_already > 20
             need_another_loop = false
         end
@@ -557,11 +639,12 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
         logging_println("   redep ", volume_fields(redeposited_uplifted))
         logging_println(" demoted ", volume_fields(demoted_land_sediment))
         logging_println("   redep ", volume_fields(redeposited_demoted))
+        logging_println("")
     end
 
     world.sediment_thickness, world.sediment_surface_fractions = 
         apply_land_sediment_fluxes( land_sediment_fraction_deposition_rate_fields )
-    #world.crust_thickness .-= orogenic_erosion_rate_field .* time_step
+    world.crust_thickness .-= orogenic_erosion_rate_field .* main_time_step
 
     if enable_step_geomorph_diagnostics
         source_fluxes = fill(0.,0:n_sediment_types)
@@ -603,7 +686,7 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
         end
         new_land_fraction_inventories = world_land_sediment_inventories( ) 
         change_rate = ( new_land_fraction_inventories .- incoming_land_fraction_inventories ) /  # incoming_land_fraction_inventories ) / 
-            time_step
+            main_time_step
         source_fluxes = orogen_fluxes .- aolean_erosion_fluxes .- dissolution_fluxes 
 
         mass_balances = change_rate .- deposition_fluxes
@@ -647,7 +730,7 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
             volume_field(continental_CaCO3_deposition_field) ])
     end
 
-    logging_println("  sediment distribution calculation")
+    #logging_println("  sediment distribution calculation")
 
     clay_dep = get_frac_diag("coastal_sediment_fraction_runoff_flux",clay_sediment) .+ 
         get_frac_diag("denuded_coastal_boundary_fraction_flux",clay_sediment) .+
@@ -761,10 +844,11 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
             cont2ocn_redist_sources + ocn2cont_redist_sources + # 
             denude_sources
         inventory_change_rate = ( new_ocean_sed_inventories .- old_ocean_sed_inventories) /
-            time_step
+            main_time_step
         mass_balance = inventory_change_rate - ocean_sed_depo_rates #+ 
             #ocn2cont_redist_sources # makes inv go down, so added
         flux_balance = total_sources .- ocean_sed_depo_rates 
+        logging_println("")
         logging_println("ocean budget init ", old_ocean_sed_inventories)
         logging_println("              new ", new_ocean_sed_inventories)
         logging_println("           change ", inventory_change_rate)
@@ -787,27 +871,25 @@ end
 
 function run_timeseries()
     global log_IO = open( base_directory * "/" * output_directory * output_tag * "/logfile." * output_tag * ".txt", "w" )
-    cd( base_directory * "/"* output_directory * output_tag )
-    if "params.jl" in readdir()
-    else
-        cp( base_directory * "/" * code_base_directory * "/params.jl", base_directory * "/"* output_directory * output_tag * "/params.jl" )
-    end
+    cd( base_directory * "/" * code_base_directory )
+
+  
     save_world()
     while world.age > 0
         verbose = true
-        if floor(world.age/100) == world.age/100 || world.age == time_step
+        if floor(world.age/100) == world.age/100 || world.age == main_time_step
             verbose = true
         end
         step_everything( )
         flush( log_IO )
         save_world()
-        time_interval = time_step * 10
+        time_interval = main_time_step * 10
         if floor(world.age/time_interval) == world.age/time_interval && 
             world.age >= time_interval
 
             save_plates()
         end
-        #if world.age == 501 # <= 2 * time_step
+        #if world.age == 501 # <= 2 * main_time_step
         #    save_plates()
         #end
         flush(log_IO)

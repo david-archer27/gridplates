@@ -33,7 +33,9 @@ mutable struct world_struct
     sediment_layer_fractions  # x, y, sed type, time_bin
     elevation_offset
     surface_elevation
-    freeboard  # end of 9 state variables
+    freeboard  
+    subducted_land_sediment_volumes # [land,ocean], not maps
+    subducted_ocean_sediment_volumes
     diags
     frac_diags
 end
@@ -45,6 +47,7 @@ mutable struct plate_struct
     crust_density
     geomorphology
     tectonics
+    #potential_uplift 
     sediment_thickness  # geologic record, dimensions of x,y
     sediment_surface_fractions # x,y,sed type 
     sediment_layer_thickness # x,y,time_bins, not used on land points
@@ -65,9 +68,9 @@ world_diag_names = ["ocean_created_plate_area",
     "ocean_subduct_plate_thickness",
     "ocean_subduct_age_plate_area",
     "ocean_subduct_age_thickness",
-    "ocean_subduct_sediment_thickness",
+    #"ocean_subduct_sediment_thickness",
     "continent_subduct_plate_thickness",
-    "continent_subduct_sediment_thickness",
+    #"continent_subduct_sediment_thickness",
     "ocean_2_continent_world_area",
     "continent_2_ocean_world_area",
     "continent_initialization_sediment_volume",
@@ -169,8 +172,8 @@ initial_sediment_type = clay_sediment
 initial_land_sediment_thickness = 1.; initial_ocean_sediment_thickness = 1.
 
 # Time 
-earliesttime = 550.
-time_step = 1. # Myr
+earliesttime = 500.
+main_time_step = 5. # Myr
 sub_time_step = 1.
 sediment_record_resolution = 20.
 sediment_time_bins = Float32[  ]
@@ -179,24 +182,27 @@ for atime in range( earliesttime, step = -sediment_record_resolution, stop = 0.)
 end
 #Float32[635,541,250,65,0] # resolution of the sediment record on the plates
 n_sediment_time_bins = length(sediment_time_bins)
-geo_interval_time_bins = [ 540, 485, 444, 419,  # these are the beginnings
+geo_interval_time_bins = Float64[ 540, 485, 444, 419,  # these are the beginnings
     359, 299, 251, 201, 145,
     66, 56, 34, 23, 5, 2, 0 ]
-geo_interval_time_bins = convert(Array{Float32},geo_interval_time_bins) # keeps netcdf library from puking
 geo_interval_names = [ "Cambrian", "Ordovician", "Silurian", "Devonian",
     "Carboniferous","Permian","Triassic","Jurassic","Cretaceous",
     "Paleocene","Eocene","Oligocene","Miocene","Pliocene","Pleistocene"]
+sealevel_timepoints = [500.,450.,250.,75.,0.]
+sealevel_values = [0.,400.,0.,250.,0.]
+sealevel_base = - 4714.7
 
 base_directory = "/Users/archer/Synched/papers/spongeball"
 code_base_directory = "codebase"
 output_directory = "outfiles." 
-output_tag = "friday_1myr"
+output_tag = "thursday"
 animation_directory = "animations"
 world_directory = "world"
 plate_directory = "plates"
 charts_directory = "charts"
+code_backup_directory = "code_bak"
 scotese_data_directory = "scotese_elevation_files"
-animation_directories = ["elevation","pct_CaCO3","crust_age","sed_thickness","scotese_elevation"]
+animation_directories = ["elevation","pct_CaCO3","crust_age","crust_thickness","sed_thickness","sed_rate","scotese_elevation"]
 animation_n_step = 1
 animation_initial_age = earliesttime; animation_final_age = 0
 save_plate_transplants_image_number = 0
@@ -214,15 +220,15 @@ enable_eyeball_changing_plateIDs = true
 enable_watch_plate_transplants = false
 enable_save_plate_transplant_images = false
 enable_watch_denuding_landscape = false
-enable_watch_remask_plates_errors = false
 enable_remask_plate_diagnostics = false
 enable_changing_plateID_diagnostics = false
 enable_step_tectonics_world_diagnostics = true
 enable_step_tectonics_plate_diagnostics = false
+enable_substep_tectonics_diagnostics = true
 enable_watch_orogeny_substeps = false
 enable_check_sediment_layer_inventory = false
 enable_step_everything_diagnostics = true
-enable_step_geomorph_diagnostics = false
+enable_step_geomorph_diagnostics = true
 enable_distribute_ocean_fluxes_diagnostics = true
 enable_watch_ocean_offshore_transport = false
 
@@ -240,10 +246,10 @@ ocean_T0 = 0.
 orogeny_smooth_coeff = 1000. 
 crust_smooth_coeff = 1.e4
 orogenic_base_uplift_meters = 2.e4 # from 16 -> 35 km through the event
-orogenic_uplift_parameter = 1.
-subduction_orogeny_parameter = 4000. 
-subduction_orogeny_smooth_coeff = 5000.
-subduction_orogeny_hor_offset = 10 * delta_y
+orogenic_uplift_parameter = 5.
+subduction_orogeny_parameter = 10000. 
+subduction_orogeny_smooth_coeff = 3.e2
+subduction_orogeny_hor_offset = 5 * delta_y
 mountain_max_altitude_target = 10.e3 # m
 max_uplift_rate_target = 600. # m / Myr
 mean_elevation_land_target = 800. # m
@@ -254,6 +260,11 @@ orogenic_erosion_tau_apparent = mountain_max_altitude_target /
 land_base_diffcoeff = max_uplift_rate_target * 
     orogenic_area_width * orogenic_area_fraction_target * 
     orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
+
+land_base_diffcoeff *= 3.
+orogenic_erosion_tau_apparent *= 10.
+orogenic_uplift_parameter /= 3.
+#subduction_orogeny_smooth_coeff = 0.
 
 if enable_aolean_transport
     aolean_erosion_rate_constant = 1. / 2000. # Myr

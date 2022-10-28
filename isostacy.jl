@@ -30,7 +30,7 @@ function isostacy(crust_thickness,crust_density,sediment_thickness,
             surface_elevation[ix,iy] = surface_boundary_thickness -
                 equivalent_mantle_thickness + elevation_offset[ix,iy]
             freeboard[ix,iy] = surface_elevation[ix,iy] -
-                world.sealevel
+                world.sealevel + sealevel_base
         end
     end
     return surface_elevation, freeboard
@@ -123,8 +123,27 @@ function compute_freeboard()
     return
 end
 # Utilities
-function get_sealevel( ) # will be replaced by interpolation like for rotations
-    return 4714.7
+
+function get_sealevel( age ) 
+    ibelow = search_sorted_below( sealevel_timepoints, age )  # eg 542, 450, 250,
+    n_timepoints = length( sealevel_timepoints )
+    fractions = fill( 0., n_timepoints )
+    if ibelow == 0
+        #println("weird age ", age)
+        fractions[n_timepoints] = 1.
+    elseif ibelow == 1 # age is older than first 
+        fractions[ibelow] = 1.
+    else
+        iabove = ibelow - 1
+        fractions[iabove] = (age - sealevel_timepoints[ibelow]) /
+            (sealevel_timepoints[iabove] - sealevel_timepoints[ibelow])
+        fractions[ibelow] = 1. - fractions[iabove]
+    end
+    sea_level = 0. 
+    for i_timepoint in 1:n_timepoints
+        sea_level += fractions[i_timepoint] * sealevel_values[i_timepoint]
+    end
+    return sea_level
 end
 function ocean_area()
     ocean_area = 0.
