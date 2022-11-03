@@ -64,17 +64,18 @@ function get_subduction_orogeny( subduction_footprint )
     #new_crust_convergence = fill(0.,nx,ny)
     is_continent = eq_mask(world.crust_type,continent_crust)
     fat_continent = deepcopy( is_continent )
-    for i_skin in 1:5
+    for i_skin in 1:5 # expand fat_continent
         neighbor_cell_field = get_blob_neighbors( fat_continent )
         fat_continent .+= neighbor_cell_field
     end
-    for i_skin in 1:6
+    for i_skin in 1:6 # capture everything and concentrate it on continent
         #println(i_skin)
         fringe = get_blob_fringe(fat_continent)
         fat_continent .-= fringe
-        #println("before ", volume_field(crust_convergence .* fringe),
-        #    " ", volume_field(crust_convergence .* fat_continent))
-
+        #=
+        println("before ", volume_field(crust_convergence .* fringe),
+            " ", volume_field(crust_convergence .* fat_continent))
+        =#
         for ix in 1:nx
             for iy in 1:ny
                 if fringe[ix,iy] == 1 && crust_convergence[ix,iy] > 0
@@ -83,10 +84,12 @@ function get_subduction_orogeny( subduction_footprint )
                 end
             end
         end
-        #println("after ", volume_field(crust_convergence .* fringe),
-        #" ", volume_field(crust_convergence .* fat_continent))
-        #println("cont ", volume_field(crust_convergence .* fringe),
-        #" ", volume_field(crust_convergence .* is_continent))
+        #=
+        println("after ", volume_field(crust_convergence .* fringe),
+            " ", volume_field(crust_convergence .* fat_continent))
+        println("cont ", volume_field(crust_convergence .* fringe),
+            " ", volume_field(crust_convergence .* is_continent))
+        =#
     end
 
     #println(volume_field(crust_convergence))       
