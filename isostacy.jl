@@ -125,8 +125,23 @@ end
 # Utilities
 
 function get_sealevel( age ) 
-    ibelow = search_sorted_below( sealevel_timepoints, age )  # eg 542, 450, 250,
-    n_timepoints = length( sealevel_timepoints )
+    sea_level = 0.
+    if enable_sealevel_change
+        sea_level = get_interpolated_time_value( sealevel_values, sealevel_timepoints, age )
+    end
+    return sea_level
+end
+function get_atmCO2( age )
+    atmCO2 = 0.
+    if enable_atmCO2_change
+        get_interpolated_time_value( atmCO2_values, atmCO2_timepoints, age )
+    end
+    return atmCO2
+end
+
+function get_interpolated_time_value( values, timepoints, age )
+    ibelow = search_sorted_below( timepoints, age )  # eg 542, 450, 250,
+    n_timepoints = length( timepoints )
     fractions = fill( 0., n_timepoints )
     if ibelow == 0
         #println("weird age ", age)
@@ -135,15 +150,15 @@ function get_sealevel( age )
         fractions[ibelow] = 1.
     else
         iabove = ibelow - 1
-        fractions[iabove] = (age - sealevel_timepoints[ibelow]) /
-            (sealevel_timepoints[iabove] - sealevel_timepoints[ibelow])
+        fractions[iabove] = (age - timepoints[ibelow]) /
+            (timepoints[iabove] - timepoints[ibelow])
         fractions[ibelow] = 1. - fractions[iabove]
     end
-    sea_level = 0. 
+    interpolated_value = 0. 
     for i_timepoint in 1:n_timepoints
-        sea_level += fractions[i_timepoint] * sealevel_values[i_timepoint]
+        interpolated_value += fractions[i_timepoint] * values[i_timepoint]
     end
-    return sea_level
+    return interpolated_value
 end
 function ocean_area()
     ocean_area = 0.

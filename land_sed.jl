@@ -182,7 +182,7 @@ function land_sediment_fraction_transport( new_elevation_field,
     sediment_source_fields, ocean_sink )
     # sets land_sediment_fraction_deposition_rate on land areas
     combined_land_sediment_fraction_deposition_rates = 
-        fill(0.,nx,ny,n_sediment_types)
+        fill(0.,nx,ny,0:n_sediment_types)
     sediment_deposition_meters = 
         land_sediment_deposition_rate_field .* main_time_step
     old_total_sediment_thickness = world.sediment_thickness
@@ -222,6 +222,7 @@ function land_sediment_fraction_transport( new_elevation_field,
             end
         end
     end 
+    update_flux_totals!(combined_land_sediment_fraction_deposition_rates)
     return combined_land_sediment_fraction_deposition_rates
 end
 function land_area_sediment_fraction_transport( 
@@ -556,7 +557,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
         apply_land_sediment_fluxes( 
             land_sediment_fraction_deposition_rate_fields ) 
     coastal_sediment_fraction_runoff_flux = 
-        fill(0.,nx,ny,n_sediment_types)
+        fill(0.,nx,ny,0:n_sediment_types)
 
     # basic equation for adjacent coastal (sink) point
     # H2' = H2 + D2 ( E1' - E2') + D1 ( 0 - E2' ) 
@@ -629,32 +630,44 @@ function land_fraction_runoff_fluxes( new_elevation_field,
             end
         end
     end 
+    update_flux_totals!(coastal_sediment_fraction_runoff_flux)
     return coastal_sediment_fraction_runoff_flux
 end
 function aolean_transport()
     # resets and fills aolean_deposition_rate and aolean_deposition_rate
-    aolean_erosion_rates = fill(0.,nx,ny)
-    aolean_deposition_rates = fill(0.,nx,ny)
+    aolean_erosion_rates = fill(0.,nx,ny,0:n_sediment_types)
+    aolean_deposition_rates = fill(0.,nx,ny,0:n_sediment_types)
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] > 0. &&
                 world.geomorphology[ix,iy] != exposed_basement
-                aolean_erosion_rates[ix,iy] = world.freeboard[ix,iy] *
-                    aolean_erosion_rate_constant * # meters / Myr
-                    rho_continent_crust / rho_sediment # m sediment / Myr
+                for i_sedtype in 1:n_sediment_types
+                    aolean_erosion_rates[ix,iy,i_sedtype] = world.freeboard[ix,iy] *
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] *
+                        aolean_erosion_rate_constant * # meters / Myr
+                        rho_continent_crust / rho_sediment # m sediment / Myr
+                    #aolean_erosion_rates[ix,iy,0] += aolean_erosion_rates[ix,iy,i_sedtype]
+                end
             end
         end
     end
-    total_aolean_erosion = volume_field(aolean_erosion_rates) 
-    mean_aolean_deposition_rate = total_aolean_erosion / ocean_area() # meters / Myr
+    total_aolean_erosion_rates = volume_fields(aolean_erosion_rates[:,:,1:end]) 
+    mean_aolean_deposition_rates = total_aolean_erosion_rates ./ ocean_area() # meters / Myr
     # m3 / Myr
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] < 0.
-                aolean_deposition_rates[ix,iy] = mean_aolean_deposition_rate 
+                for i_sedtype in 1:n_sediment_types
+                    aolean_deposition_rates[ix,iy,i_sedtype] = 
+                        mean_aolean_deposition_rates[i_sedtype] 
+                    #aolean_deposition_rates[ix,iy,0] += 
+                    #    aolean_deposition_rates[ix,iy,i_sedtype]
+                end
             end
         end
     end
+    update_flux_totals!(aolean_erosion_rates)
+    update_flux_totals!(aolean_deposition_rates)
     return aolean_erosion_rates, aolean_deposition_rates
 end
 

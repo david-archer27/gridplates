@@ -285,7 +285,10 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                                         mean_meters_depositing / main_time_step * 
                                         fractions_exported[i_sedtype]
                                 end
-                                sum_check = fractions_exported[1] + fractions_exported[2]
+                                sum_check = 0.
+                                for i_sedtype in 1:n_sediment_types
+                                    sum_check += fractions_exported[i_sedtype]
+                                end
                                 if sum_check < 0.999 || sum_check > 1.001
                                     error("sum_check error 2 ",[ix,iy,fractions_exported,sum_check])
                                 end
@@ -386,7 +389,7 @@ function redistribute_trapped_land_fluxes_to_coast!( trapped_land_fluxes,
     coastal_volume = 
         [ volume_field( coastal_fluxes[:,:,0]  ), volume_field( coastal_fluxes[:,:,1]  ), volume_field( coastal_fluxes[:,:,2]  )]
     for i_blob in 1:length(land_blobs)
-        #println(i_blob)
+        #println("about to blow ", i_blob)
         blob = land_blobs[i_blob]
         if volume_field( trapped_land_fluxes[:,:,0] .* blob ) > 0
             #println("moving stuff ",i_blob," ",trapped_volume," ",coastal_volume," ",trapped_volume + coastal_volume)

@@ -19,6 +19,7 @@ mutable struct world_struct
     # create and manipulate a global world for snapshot composite view of rotated plates
     age
     sealevel
+    atmCO2
     plateID         # pertaining to plate tectonics
     plateIDlist
     crust_type      # beginning of the 10 state variables
@@ -36,6 +37,8 @@ mutable struct world_struct
     freeboard  
     subducted_land_sediment_volumes # [land,ocean], not maps
     subducted_ocean_sediment_volumes
+    initial_ocean_sediment_inventories
+    initial_land_sediment_inventories
     diags
     frac_diags
 end
@@ -78,17 +81,18 @@ world_diag_names = ["ocean_created_plate_area",
     "continent_orogenic_uplift_rate",   # set in outer time loop, uplift +, meters / Myr
     "subduction_orogenic_uplift_rate",  
     "crust_erosion_rate",               # units m/Myr, calc on substep
-    "crust_clay_source_rate",
-    "aolean_clay_erosion_rate", 
-    "aolean_clay_deposition_rate", 
-    "land_orogenic_clay_flux", # in orogeny-neighboring land grid cells
-    "land_CaCO3_dissolution_rate", # subaereal erosion
+    "land_dissolved_Ca_prod_rates",
+    #"crust_clay_source_rate",
+    #"aolean_clay_erosion_rate", 
+    #"aolean_clay_deposition_rate", 
+    #"land_orogenic_clay_flux", # in orogeny-neighboring land grid cells
+    #"land_CaCO3_dissolution_rate", # subaereal erosion
     "continental_CaCO3_deposition_rate", # when flooded
     "land_sediment_deposition_rate",
     "seafloor_sediment_deposition_rate",
     "global_sediment_deposition_rate",
     "world_grid_sediment_change",
-    "coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
+    #"coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
     "coastal_CaCO3_flux",
     "pelagic_CaCO3_deposition_rate",
     "seafloor_delta_CO3"]
@@ -102,6 +106,12 @@ world_frac_diag_names = [
     "denuded_sediment_source_fraction_flux",
     "denuded_land_boundary_fraction_flux",
     "denuded_coastal_boundary_fraction_flux",
+    "aolean_erosion_fraction_flux",
+    "aolean_deposition_fraction_flux",
+    "crust_orogenic_fraction_flux",
+    "land_orogenic_fraction_flux",
+    "coastal_orogenic_fraction_flux",
+    "land_sediment_fraction_dissolution_rate",
     "land_sediment_fraction_deposition_rate",
     "land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
@@ -127,7 +137,7 @@ for iy in 1:ny
     delta_x[iy] = 110.e3 * cos(ycoords[iy] / 180. * pi) # m
     n_equiv_boxes[iy] = Int(floor(delta_y / delta_x[iy]))
 end
-shelf_depth_clastics = -100.; shelf_depth_CaCO3 = -10.
+shelf_depth_clastics = -100.; shelf_depth_CaCO3 = -0.1
 
 log_IO = 0 # dummy file handle for log output file
 
@@ -166,13 +176,15 @@ new_plateID = 7 # set in copy_plate_point_plate12coord!
 deleted_plateID = 8
 
 # sediment types
-sediment_type_names = ["Clay","CaCO3"]; clay_sediment = 1; CaCO3_sediment = 2
+sediment_type_names = ["Clay","CaCO3","CaO"]
+clay_sediment = 1; CaCO3_sediment = 2; CaO_sediment = 3
 n_sediment_types = length(sediment_type_names)
-initial_sediment_type = clay_sediment 
+initial_sediment_fractions = [ 0.8,0.,0.2 ]
+orogenic_sediment_source_fractions = [ 0.8,0.,0.2 ]
 initial_land_sediment_thickness = 1.; initial_ocean_sediment_thickness = 1.
 
 # Time 
-earliesttime = 500.
+earliesttime = 600.
 main_time_step = 5. # Myr
 sub_time_step = 1.
 sediment_record_resolution = 20.
@@ -188,21 +200,31 @@ geo_interval_time_bins = Float64[ 540, 485, 444, 419,  # these are the beginning
 geo_interval_names = [ "Cambrian", "Ordovician", "Silurian", "Devonian",
     "Carboniferous","Permian","Triassic","Jurassic","Cretaceous",
     "Paleocene","Eocene","Oligocene","Miocene","Pliocene","Pleistocene"]
-sealevel_timepoints = [500.,450.,250.,75.,0.]
-sealevel_values = [0.,400.,0.,250.,0.]
+sealevel_timepoints = [550.,500.,450.,250., 75.,0.]
+sealevel_values =     [  0.,  0.,200.,  0.,250.,0.]
 sealevel_base = - 4714.7
+atmCO2_timepoints = [550.,0.]
+atmCO2_values = [400.,400.]
+atmCO2_base = 400.
 
-base_directory = "/Users/archer/Synched/papers/spongeball"
-code_base_directory = "codebase"
+#sealevel_timepoints = [100.,50.,0.]
+#sealevel_values = [0.,2.,0.]
+#sealevel_timepoints = [100.,0.]
+#sealevel_values = [0.,0.]
+
+#base_directory = ".."
+code_base_directory = pwd() # "gridplates"
 output_directory = "outfiles." 
-output_tag = "thursday"
+output_tag = "saturday"
 animation_directory = "animations"
 world_directory = "world"
 plate_directory = "plates"
 charts_directory = "charts"
 code_backup_directory = "code_bak"
 scotese_data_directory = "scotese_elevation_files"
-animation_directories = ["elevation","pct_CaCO3","crust_age","crust_thickness","sed_thickness","sed_rate","scotese_elevation"]
+animation_directories = ["elevation","pct_CaCO3","pct_CaO",
+    "crust_age","crust_thickness","crust_thickening_rate","sed_thickness","sed_rate",
+    "sed_thickness_age","scotese_elevation"]
 animation_n_step = 1
 animation_initial_age = earliesttime; animation_final_age = 0
 save_plate_transplants_image_number = 0
@@ -211,11 +233,17 @@ save_plate_transplants_image_number = 0
 enable_land_runoff = true
 enable_aolean_transport = true
 enable_cont_update_from_files = true
-enable_crust_cont2ocn = true
+enable_crust_cont2ocn = true    
 enable_crust_ocn2cont = true
 enable_orogeny = true
+enable_subduction_orogeny = false
 eliminate_regrid_drift = true
 enable_eyeball_changing_plateIDs = true
+enable_sealevel_change = true
+enable_geomorph = true
+enable_atmCO2_change = false
+enable_continental_CaCO3_deposition = true
+enable_CaCO3_land_diss_ocean_repcp = true
 #enable_watch_plate_transplant_misses = false
 enable_watch_plate_transplants = false
 enable_save_plate_transplant_images = false
@@ -224,11 +252,12 @@ enable_remask_plate_diagnostics = false
 enable_changing_plateID_diagnostics = false
 enable_step_tectonics_world_diagnostics = true
 enable_step_tectonics_plate_diagnostics = false
-enable_substep_tectonics_diagnostics = true
+enable_substep_tectonics_diagnostics = false
 enable_watch_orogeny_substeps = false
 enable_check_sediment_layer_inventory = false
 enable_step_everything_diagnostics = true
 enable_step_geomorph_diagnostics = true
+enable_extraverbose_step_geomorph_diagnostics = true
 enable_distribute_ocean_fluxes_diagnostics = true
 enable_watch_ocean_offshore_transport = false
 
@@ -244,11 +273,11 @@ ocean_T0 = 0.
 
 # geomorphology parameters
 orogeny_smooth_coeff = 1000. 
-crust_smooth_coeff = 1.e4
+crust_smooth_coeff = 1000.
 orogenic_base_uplift_meters = 2.e4 # from 16 -> 35 km through the event
-orogenic_uplift_parameter = 5.
-subduction_orogeny_parameter = 10000. 
-subduction_orogeny_smooth_coeff = 3.e2
+orogenic_uplift_parameter = 600. # m / Myr base
+subduction_orogeny_parameter = 7500. 
+subduction_orogeny_smooth_coeff = 1.e4
 subduction_orogeny_hor_offset = 5 * delta_y
 mountain_max_altitude_target = 10.e3 # m
 max_uplift_rate_target = 600. # m / Myr
@@ -261,18 +290,58 @@ land_base_diffcoeff = max_uplift_rate_target *
     orogenic_area_width * orogenic_area_fraction_target * 
     orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 3.
+land_base_diffcoeff *= 1.3
 orogenic_erosion_tau_apparent *= 10.
-orogenic_uplift_parameter /= 3.
+orogenic_uplift_parameter /= 1.5
 #subduction_orogeny_smooth_coeff = 0.
+
+function create_orogenies()
+    orogenic_events = Dict()
+    orogenic_events["Pan_African"] =
+        create_orogenic_event("pan_african",650.,550.,1.)  # africa, south america
+    orogenic_events["Avalonian"] =
+        create_orogenic_event("taconian",650.,500.,1.)
+    orogenic_events["East African"] =
+        create_orogenic_event("e_african",550.,400.,0.5)
+    orogenic_events["Taconian"] =
+        create_orogenic_event("taconian",490.,440.,3.)
+    orogenic_events["Calcedonian/Acadian"] =
+        create_orogenic_event("calcedonian",460.,330.,1.)
+    orogenic_events["Borchgrevink"] =
+        create_orogenic_event("borchgrevink",440.,400.,1.)
+    orogenic_events["Hercynian/Alleghenian/Uralian"] =
+        create_orogenic_event("hercynian",300.,240.,0.5) # = variscan
+        # changed end from 250 so something would be uplifting at 0 sl 250
+    # Amurian (Japan) should be covered by subduction_orogeny
+    orogenic_events["Indo Sinean"] =
+        create_orogenic_event("indo_sinean",200.,180.,0.5)
+    orogenic_events["Laramide"] =
+        create_orogenic_event("laramide",400.,0.,0.5)
+    orogenic_events["Cimmerian"] =
+        create_orogenic_event("cimmerian",180.,150.,1.)
+    orogenic_events["Mongol Okhotsk"] =
+        create_orogenic_event("mongol_okhotsk",140.,130.,1.)
+    orogenic_events["Wrangellian"] =
+        create_orogenic_event("wrangellian",110.,80.,0.5)
+    orogenic_events["Verkhoyansk"] =
+        create_orogenic_event("verkhoyansk",100.,70.,0.5)
+    orogenic_events["Alpine"] =
+        create_orogenic_event("alpine",50.,0.,0.5)
+    orogenic_events["Himalayan"] =
+        create_orogenic_event("himalayan",40.,0.,0.5)
+    return orogenic_events
+end
 
 if enable_aolean_transport
     aolean_erosion_rate_constant = 1. / 2000. # Myr
 else
     aolean_erosion_rate_constant = 0.
 end
-land_CaCO3_dissolving_altitude = 10. # meters
-land_CaCO3_dissolution_rate = 0. # meters/Myr
+
+#land_CaCO3_dissolving_altitude = 10. # meters
+land_sediment_dissolution_rate_constants = [0.0,0.01,0.01] # per Myr
+land_sediment_dissolution_2xCO2 = [0.,0.,0.]
+global_CaCO3_net_burial_flux = 1.e15 # today fluxes
 seafloor_base_diffcoeff = 3.e4 # m2 / yr
 
 

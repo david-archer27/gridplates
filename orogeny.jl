@@ -7,9 +7,9 @@ function orogeny( subduction_footprint )
             println( orogenic_event.name  )
             footprint = orogenic_event.footprint .* # 0 or 1
                 orogenic_uplift_parameter .* 
-                orogenic_base_uplift_meters .*
-                orogenic_event.uplift_scale ./ # meters of crust over the event
-                ( orogenic_event.onset - orogenic_event.finish ) # Myr
+                #orogenic_base_uplift_meters .*
+                orogenic_event.uplift_scale #./ # meters of crust over the event
+                #( orogenic_event.onset - orogenic_event.finish ) # Myr
             rotatedfootprint = fill_world_orogeny(footprint)
             #smooth_world!( rotatedfootprint, orogeny_smooth_coeff )
             #smooth_masked_field!(rotatedfootprint, world_mask, orogeny_smooth_coeff)
@@ -19,7 +19,10 @@ function orogeny( subduction_footprint )
     end
     #orogeny_footprint .*= get_continent_mask()
     #set_diag("continent_orogenic_uplift_rate",orogeny_footprint)
-    subduction_orogeny = get_subduction_orogeny( subduction_footprint )
+    subduction_orogeny = fill(0.,nx,ny)
+    if enable_subduction_orogeny
+        subduction_orogeny = get_subduction_orogeny( subduction_footprint )
+    end
     #smooth_world!(subduction_orogeny,subduction_orogeny_smooth_coeff)
     #=for ix in 1:nx
         for iy in 1:ny
@@ -223,35 +226,7 @@ function create_orogenic_event(name,onset,finish,uplift_rate_scale)
     orogenic_event = orogenic_event_struct(name,worldfootprint,onset,finish,uplift_rate_scale)
     return orogenic_event
 end
-function create_orogenies()
-    orogenic_events = Dict()
-    orogenic_events["Pan_African"] =
-        create_orogenic_event("pan_african",650.,550.,1.)  # africa, south america
-    orogenic_events["Avalonian"] =
-        create_orogenic_event("taconian",650.,500.,1.)
-    orogenic_events["Taconian"] =
-        create_orogenic_event("taconian",490.,440.,3.)
-    orogenic_events["Calcedonian/Acadian"] =
-        create_orogenic_event("calcedonian",460.,390.,1.)
-    orogenic_events["Hercynian/Alleghenian/Uralian"] =
-        create_orogenic_event("hercynian",300.,250.,0.5) # = variscan
-    # Amurian (Japan) should be covered by subduction_orogeny
-    orogenic_events["Indo Sinean"] =
-        create_orogenic_event("indo_sinean",200.,180.,0.5)
-    orogenic_events["Cimmerian"] =
-        create_orogenic_event("cimmerian",180.,150.,1.)
-    orogenic_events["Mongol Okhotsk"] =
-        create_orogenic_event("mongol_okhotsk",140.,130.,1.)
-    orogenic_events["Wrangellian"] =
-        create_orogenic_event("wrangellian",110.,80.,0.5)
-    orogenic_events["Verkhoyansk"] =
-        create_orogenic_event("verkhoyansk",100.,70.,0.5)
-    orogenic_events["Alpine"] =
-        create_orogenic_event("alpine",50.,0.,1.)
-    orogenic_events["Himalayan"] =
-        create_orogenic_event("himalayan",40.,0.,1.)
-    return orogenic_events
-end
+
 function smooth_masked_field!( values, mask, diffcoeff )
     # alters sed_fluxes
     blobs = get_blobs( mask )

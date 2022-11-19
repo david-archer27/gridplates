@@ -6,6 +6,7 @@ using GLMakie
 using Colors
 using GeometryTypes
 using Contour
+using DataFrames
 using BSON
 using StaticArraysCore
 using Plots
@@ -21,22 +22,27 @@ include("isostacy.jl")
 include("utilities.jl")
 include("io.jl")
 
-cd( base_directory * "/" * code_base_directory )
+cd( code_base_directory )
 rotations = read_rotation_file("1000_0_rotfile_Merdith_et_al.rot")
 norotation = rotation2matrix(rotations[1])
 orogenic_events = create_orogenies()
 
 setup_working_directories()
-filename = base_directory * "/" * code_base_directory * "/" * "plate_ID_changes.bson"
+filename = "plate_ID_changes.bson"
 BSON.@load filename plateID_change_log 
 
 create_everything( earliesttime ) 
-#
-#world = read_world(440.)
-#plates = read_plates()
+isostacy()
+##
+
+world = read_world(40)
+plates = read_plates()
+##for i in 1:2
 #step_tectonics()
 #
-step_everything()
+#world.sealevel += 20
+    step_everything()
+end
 ##
 
 #@time 

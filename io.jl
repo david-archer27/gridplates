@@ -65,7 +65,7 @@ function read_plateIDs()
 end
 function read_plateIDs( age )
     integerage = Int(ceil(age))
-    filename = base_directory * "/" * code_base_directory * "/platefiles/plateIDs." * string(integerage) * ".csv"
+    filename = code_base_directory * "/platefiles/plateIDs." * string(integerage) * ".csv"
     plateIDmap = read_my_csv(filename)
     return plateIDmap
 end
@@ -76,7 +76,7 @@ function read_continentIDs( age )
     #    contIDmap = fill(0,nx,ny)
     #    return contIDmap
     integerage = Int(ceil(age))
-    filename = base_directory * "/" * code_base_directory * "/contfiles/contIDs." * string(Int(integerage)) * ".csv"
+    filename = code_base_directory * "/contfiles/contIDs." * string(Int(integerage)) * ".csv"
     contIDmap = read_my_csv(filename)
     return contIDmap
 end
@@ -98,7 +98,7 @@ end
 
 # file io
 function setup_working_directories()
-    cd( base_directory )
+    cd( ".." )
     if output_directory * output_tag in readdir()
     else
         mkdir( output_directory * output_tag )
@@ -119,16 +119,16 @@ function setup_working_directories()
     else
         mkdir( code_backup_directory )
         println( "creating ", code_backup_directory )
-        cd( base_directory * "/"* output_directory * output_tag * "/" * code_backup_directory )
+        cd( code_backup_directory )
         for jl_file in ["params.jl", "main.jl","steps.jl","land_sed.jl","ocean_sed.jl","caco3.jl","orogeny.jl","plates.jl","utilities.jl","io.jl","params.jl"]
             if jl_file in readdir()
             else
-                cp( base_directory * "/" * code_base_directory * "/" * jl_file, 
-                    base_directory * "/"* output_directory * output_tag * "/" * code_backup_directory * "/" * jl_file )
+                cp( code_base_directory * "/" * jl_file, "./" * jl_file )
+                 #   "../" * output_directory * output_tag * "/" * code_backup_directory * "/" * jl_file )
             end
         end
     end
-    cd( base_directory * "/"* output_directory * output_tag )
+    cd( ".." )
     if charts_directory in readdir()
     else
         mkdir( charts_directory )
@@ -155,7 +155,7 @@ function setup_working_directories()
             println("creating plate_transplants")
         end
     end
-    cd( base_directory * "/" * code_base_directory )
+    cd( code_base_directory )
 end
 function save_field(variable_name,field)
     timestamp = string(Int(ceil(world.age)))
@@ -166,7 +166,7 @@ end
 function save_world()
     timestamp = string(Int(ceil(world.age)))
     # in world grid, only the age field is non-trivial to calculate
-    filename = base_directory * "/" * output_directory * output_tag * "/" *
+    filename =  "../" * output_directory * output_tag * "/" *
         world_directory * "/" * output_tag * ".world." * timestamp * ".bson"
     rm(filename, force=true)
     println("saving ", filename)
@@ -174,11 +174,10 @@ function save_world()
     return
 end
 function read_world(age)
+    #global world
     timestamp = string(Int(ceil(age)))
     # in world grid, only the age field is non-trivial to calculate
-    #filename = base_directory * output_directory * output_tag * "/" *
-    #    world_subdirectory * "world." * output_tag * "." * timestamp * ".bson"
-    filename = base_directory * "/" * output_directory * output_tag * "/" *
+    filename = "../" * output_directory * output_tag * "/" *
         world_directory * "/" * output_tag * ".world." * timestamp * ".bson"
     println("reading world ",filename)
     BSON.@load filename world
@@ -189,7 +188,7 @@ function save_plates()
     for plateID in world.plateIDlist
         plate = plates[plateID]
         IDstring = string(Int(plate.plateID))
-        filename = base_directory * "/" * output_directory * output_tag * "/" *
+        filename = "../" * output_directory * output_tag * "/" *
             plate_directory * "/" * output_tag * ".plate." * IDstring * "." * timestamp * ".bson"
         rm(filename, force=true)
         println("saving ", filename)
@@ -199,7 +198,7 @@ function save_plates()
 end
 function save_plates_checkpoint()
     # in world grid, only the age field is non-trivial to calculate
-    filename = base_directory * output_directory * output_tag *
+    filename = "../" * output_directory * output_tag *
         plate_subdirectory * output_tag * ".plates.checkpoint.bson"
     rm(filename, force=true)
     println("saving ", filename)
@@ -207,13 +206,12 @@ function save_plates_checkpoint()
     return
 end
 function read_plates( )
-    cd( base_directory * "/" * code_base_directory )
     age = world.age
     timestamp = string(Int(ceil(age)))
     for plateID in world.plateIDlist
         println("reading plate ", plateID)
         IDstring = string(Int(plateID))
-        filename = base_directory * "/" * output_directory * output_tag * "/" *
+        filename = "../" * output_directory * output_tag * "/" *
             plate_directory * "/" * output_tag * ".plate." * IDstring * "." * timestamp * ".bson"
         BSON.@load filename plate
         if haskey(plates,plateID) == false
@@ -225,7 +223,7 @@ function read_plates( )
     return plates
 end
 function read_sedthick_xyz()
-    f = open( base_directory * "/sedthick.xyz")
+    f = open( "data/sedthick.xyz")
     lines = readlines(f)
     field = fill(0.,nx,ny)
     for line in lines
@@ -299,7 +297,7 @@ end
 # Animations
 function cleanup_image_files( )
     for plot_type in animation_directories
-        cd( base_directory * "/" * output_directory * output_tag * "/" * 
+        cd( "../" * output_directory * output_tag * "/" * 
             animation_directory * "/" * plot_type)
         file_list = readdir()
         for file in file_list
@@ -310,18 +308,17 @@ function cleanup_image_files( )
             end
         end
         srcfile = plot_type * "." * output_tag * ".mp4" 
-        destfile = base_directory * "/" * output_directory * output_tag * "/" * 
-            animation_directory * "/" * plot_type * "." * output_tag * ".mp4"
+        destfile = "../" * srcfile
         println("moving ", srcfile, " ", destfile )
         mv( srcfile, destfile )
-        cd( base_directory * "/" * output_directory * output_tag * "/" * 
-            animation_directory )
+        cd( ".." )
             println("removing directory ", plot_type )
         rm( plot_type, recursive=true )
     end
+    cd( code_base_directory )
 end 
 function animate_elevation()
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "elevation" 
     cd( directory )
     starting_file_list = readdir()
@@ -338,23 +335,25 @@ function animate_elevation()
         else
             println( "creating ", age, " ", directory * "/" * image_file_name )
             global world = read_world( age )
+            isostacy()
             scene = plot_elevation()
-            plot_add_plate_boundaries!(scene)
-            plot_add_orogenies!(scene)
-            plot_add_continent_outlines!(scene)
+            #plot_add_plate_boundaries!(scene)
+            #plot_add_orogenies!(scene)
+            #plot_add_continent_outlines!(scene)
+            plot_add_coast_lines!(scene)
             plot_add_timestamp!(scene,world.age,-180,-105) 
-            plot_add_title!(scene,"Elevation L(0:5km)/O(-6:-2km)")
+            plot_add_title!(scene,"Elevation")
             Makie.save( image_file_name, scene )
         end
     end
     mp4_file =  "elevation." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
 function animate_pct_CaCO3()
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "pct_CaCO3" 
     cd( directory )
     starting_file_list = readdir()
@@ -371,7 +370,8 @@ function animate_pct_CaCO3()
         else
             println( "creating ", age, " ", directory * "/" * image_file_name )
             global world = read_world( age )
-            scene = plot_field(world.sediment_surface_fractions[:,:,2] .* 100.,0.,100.)
+            scene = plot_field(world.sediment_surface_fractions[:,:,2] .* 
+                gt_mask(world.sediment_thickness,0.) .* 100.,0.,100.)
             plot_add_plate_boundaries!(scene)
             plot_add_orogenies!(scene)
             plot_add_continent_outlines!(scene)
@@ -383,11 +383,62 @@ function animate_pct_CaCO3()
     mp4_file =  "pct_CaCO3." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
+function animate_pct_CaO()
+    directory = "../" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "pct_CaO" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ animation_final_age ]
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = read_world( age )
+            CaO_fraction = world.sediment_surface_fractions[:,:,CaO_sediment]
+            clay_fraction = world.sediment_surface_fractions[:,:,clay_sediment]
+            #CaCO3_fraction = world.sediment_surface_fractions[:,:,CaCO3_sediment]
+            weathering_index = fill(0.,nx,ny)
+            CaO_calcite_free = fill(0.,nx,ny)
+            for ix in 1:nx
+                for iy in 1:ny
+                    if world.sediment_thickness[ix,iy] > 0.
+                        if CaO_fraction[ix,iy] + clay_fraction[ix,iy] > 0.
+                            CaO_calcite_free[ix,iy] = CaO_fraction[ix,iy] / 
+                                ( CaO_fraction[ix,iy] + clay_fraction[ix,iy] ) 
+                            weathering_index[ix,iy] = 1. - 
+                                CaO_calcite_free[ix,iy] / orogenic_sediment_source_fractions[CaO_sediment] 
+                        end
+                    end
+                end
+            end
+            scene = plot_field(weathering_index .* 100.,0.,100.)
+            plot_add_plate_boundaries!(scene)
+            plot_add_orogenies!(scene)
+            plot_add_coast_lines!(scene)
+            plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
+            plot_add_title!(scene,"weathering index")
+            Makie.save( image_file_name, scene )
+        end
+    end
+    mp4_file =  "pct_CaO." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
+end
+
 function animate_sed_thickness()
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "sed_thickness" 
     cd( directory )
     starting_file_list = readdir()
@@ -416,11 +467,38 @@ function animate_sed_thickness()
     mp4_file =  "sed_thickness." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
+end
+function animate_sed_thickness_age()
+    directory = "../" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "sed_thickness_age" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ animation_final_age ]
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = read_world( age )
+            plot_sediment_thickness_age( image_file_name )
+        end
+    end
+    mp4_file =  "sed_thickness_age." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
 function animate_sedimentation_rate()
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "sed_rate" 
     cd( directory )
     starting_file_list = readdir()
@@ -451,10 +529,10 @@ function animate_sedimentation_rate()
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
     run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    cd( code_base_directory )
 end
 function animate_crust_age( )
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "crust_age" 
     cd( directory )
     starting_file_list = readdir()
@@ -483,11 +561,11 @@ function animate_crust_age( )
     mp4_file =  "crust_age." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
 function animate_crust_thickness( )
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "crust_thickness" 
     cd( directory )
     starting_file_list = readdir()
@@ -516,11 +594,45 @@ function animate_crust_thickness( )
     mp4_file =  "crust_thickness." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
+end
+function animate_crust_thickening_rate( )
+    directory = "../" * output_directory * output_tag * "/" * 
+        animation_directory * "/" * "crust_thickening_rate" 
+    cd( directory )
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [ animation_final_age ]
+    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+        push!(ages,age)
+    end
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number,3,"0") * ".png"
+        if image_file_name in starting_file_list
+            println( "already done ", age," ", image_file_name )
+        else
+            println( "creating ", age, " ", directory * "/" * image_file_name )
+            global world = read_world( age )
+            oro = get_diag("continent_orogenic_uplift_rate")
+            scene = plot_field(oro,0.,500.)
+            plot_add_plate_boundaries!(scene)
+            plot_add_orogenies!(scene)
+            plot_add_continent_outlines!(scene)
+            plot_add_timestamp!(scene,world.age,-180,-105)
+            plot_add_title!(scene,"Crust thickening rate, m / Myr")
+            Makie.save( image_file_name, scene )
+        end
+    end
+    mp4_file =  "crust_thickening_rate." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm( mp4_file,force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
 function animate_scotese_elevation( )
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
+    directory = "../" * output_directory * output_tag * "/" * 
         animation_directory * "/" * "scotese_elevation" 
     cd( directory )
     starting_file_list = readdir()
@@ -538,14 +650,17 @@ function animate_scotese_elevation( )
             println( "creating ", age, " ", directory * "/" * image_file_name )
             global world = read_world( age )
             scotese_elevation,scotese_age = nearest_scotese_elevation()
-            scene = plot_two_fields(world.freeboard,scotese_elevation,-4000,4000)
-            gridplatestimestamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(age)
+            scene = plot_two_fields(world.freeboard,scotese_elevation,-4000,4000,"freeboard")
+            gridplatestimestamp = string(Int(floor(world.age))) * 
+                " Myr, " * get_geo_interval(age) * 
+                ", " * string(world.sealevel) * " m sea level"
             scotesetimestamp = string(Int(floor(scotese_age))) * " Myr"
             text!(scene,gridplatestimestamp, position = (0,95),textsize=15)
             text!(scene, scotesetimestamp, position = (0,-110),textsize=15)
-            plot_add_plate_boundaries!(scene)
+            #plot_add_plate_boundaries!(scene)
             plot_add_orogenies!(scene)
-            plot_add_continent_outlines!(scene)
+            #plot_add_continent_outlines!(scene)
+            plot_add_coast_lines!(scene)
             text!(scene,"GridPlates Elevation",position=(-180,95),textsize=20)
             text!(scene,"Scotese Reconstruction",position=(-180,-110),textsize=20)
             Makie.save( image_file_name, scene )
@@ -554,13 +669,15 @@ function animate_scotese_elevation( )
     mp4_file =  "scotese_elevation." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    cd( code_base_directory )
 end
 function animate_all( )
     animate_elevation()
     animate_pct_CaCO3()
+    animate_pct_CaO()
     animate_sed_thickness()
+    animate_sed_thickness_age()
     animate_crust_age( )
     animate_crust_thickness( )
     animate_sedimentation_rate()
@@ -571,7 +688,7 @@ end
 function create_timeseries_charts(  )
     age = earliesttime 
     global world = read_world( age )
-    n_time_points = Int( age / main_time_step) + 1
+    n_time_points = Int( age / main_time_step)
     n_diags = length(world_diag_names)
     n_frac_diags = length(world_frac_diag_names)
     diags_timeseries = fill(0.,n_diags,n_time_points)
@@ -592,6 +709,7 @@ function create_timeseries_charts(  )
         world_ocean_sediment_inventories( )[1:n_sediment_types]
     fill( 0., n_sediment_types )
     step_changes = fill( 0., n_sediment_types, n_time_points )
+    fraction_denuded = fill(0.,n_time_points)
     while age > animation_final_age
         age -= main_time_step
         println(age)
@@ -614,20 +732,20 @@ function create_timeseries_charts(  )
         for i_diag in 1:n_diags
             diag_volume = volume_field( get_diag(world_diag_names[i_diag] ))
             diags_timeseries[i_diag,i_time_point] = diag_volume
-            if i_time_point > 1
+            #=if i_time_point > 1
                 cum_diags_timeseries[i_diag,i_time_point] = 
                     cum_diags_timeseries[i_diag,i_time_point-1] + diag_volume * main_time_step
             else
                 cum_diags_timeseries[i_diag,i_time_point] = 
                     diag_volume * main_time_step
-            end
+            end=#
         end
         #Threads.@threads 
         for i_frac_diag in 1:n_frac_diags
             for i_sedtype in 1:n_sediment_types
                 frac_diag_volume = volume_field( get_frac_diag(world_frac_diag_names[i_frac_diag], i_sedtype ))
                 frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point] = frac_diag_volume
-                if i_time_point > 1
+                #=if i_time_point > 1
                     cum_frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point] = 
                         cum_frac_diags_timeseries[i_frac_diag,i_sedtype,i_time_point-1] + 
                         frac_diag_volume * main_time_step
@@ -637,7 +755,7 @@ function create_timeseries_charts(  )
                 end
                 cum_subduction_rates[:,i_time_point] .= 
                     cum_subduction_rates[:,i_time_point-1] +
-                    subduction_rates[:,i_time_point]
+                    subduction_rates[:,i_time_point]=#
             end
         end
 
@@ -652,27 +770,42 @@ function create_timeseries_charts(  )
         elevation_timeseries[i_time_point,1] = field_mean(world.freeboard .* is_land())
         elevation_timeseries[i_time_point,2] = field_mean(world.freeboard .* (1 .- is_land()))
         elevation_timeseries[i_time_point,3] = field_max(world.freeboard)
+        area_denuded = volume_field(eq_mask(world.geomorphology,exposed_basement))
+        area_covered = volume_field(eq_mask(world.geomorphology,sedimented_land) )
+        fraction_denuded[i_time_point] = area_denuded / ( area_denuded + area_covered )
     end
     n_time_points = length(time_points)
-    cd( base_directory * "/" * output_directory * output_tag )
-    plot_title = "clay fluxes"; variable_labels = ["prod" "subduct" "change" "bal"]
+    cd( "../" * output_directory * output_tag )
+
+
+
+    plot_title = "clay fluxes"; variable_labels = ["prod" "land deposition" "runoff" "ocean deposition" "subduction" "change" "bal"]
     units_label = "m3/Myr"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
-    clay_prod = diags_timeseries[
-        diag_index("crust_clay_source_rate"),:]
-    variable_point_array[:,1] = clay_prod[:]
-    clay_subduct = subduction_rates[clay_sediment,:]
-        #=frac_diags_timeseries[frac_diag_index(
-        "ocean_subduct_sediment_fraction_thickness"),clay_sediment,:] +
-        frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]=#
-    variable_point_array[:,2] = clay_subduct
-    variable_point_array[:,3] = step_changes[clay_sediment,:]
-    variable_point_array[:,4] = step_changes[clay_sediment,:] + clay_subduct - clay_prod
+    variable_point_array[:,1] = frac_diags_timeseries[
+        frac_diag_index("crust_orogenic_fraction_flux"),clay_sediment,:]
+    variable_point_array[:,2] = frac_diags_timeseries[
+        frac_diag_index("land_sediment_fraction_deposition_rate"),clay_sediment,:]
+    variable_point_array[:,3] = frac_diags_timeseries[
+        frac_diag_index("coastal_sediment_fraction_runoff_flux"),clay_sediment,:]
+    variable_point_array[:,4] = frac_diags_timeseries[
+        frac_diag_index("seafloor_sediment_fraction_deposition_rate"),clay_sediment,:]
+    variable_point_array[:,5] = subduction_rates[clay_sediment,:]
+    variable_point_array[:,6] = step_changes[clay_sediment,:]
+    variable_point_array[:,7] = variable_point_array[:,6] + # step_changes
+        variable_point_array[:,5] - # subduct
+        variable_point_array[:,1] # prod
     plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
 
-    plot_title = "CaCO3 fluxes"; variable_labels = ["prod" "subduct" "change" "bal"]
+    variable_point_array = accumulate_values!( variable_point_array )
+    plot_title = "cumulative clay fluxes"; variable_labels = ["inventory" "produced" "subducted" "bal"]
+    units_label = "m3"
+    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+ 
+
+
+    plot_title = "CaCO3 fluxes"; variable_labels = ["Continental prod" "coastal prod" "pelagic prod" "land diss" "runoff" "subduct" "change" "bal"]
     units_label = "m3/Myr"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
@@ -680,19 +813,60 @@ function create_timeseries_charts(  )
         "coastal_CaCO3_flux"),:] .+
         diags_timeseries[diag_index(
         "pelagic_CaCO3_deposition_rate"),:]
-    variable_point_array[:,1] = CaCO3_prod
-    CaCO3_subduct = subduction_rates[CaCO3_sediment,:]
-        #=frac_diags_timeseries[frac_diag_index(
-        "ocean_subduct_sediment_fraction_thickness"),CaCO3_sediment,:] +
-        frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]=#
-    variable_point_array[:,2] = CaCO3_subduct
-    variable_point_array[:,3] = step_changes[CaCO3_sediment,:]
-    variable_point_array[:,4] = step_changes[CaCO3_sediment,:] + CaCO3_subduct - CaCO3_prod
+    variable_point_array[:,1] = diags_timeseries[diag_index(
+        "continental_CaCO3_deposition_rate"),:]
+    variable_point_array[:,2] = diags_timeseries[diag_index(
+        "coastal_CaCO3_flux"),:]
+    variable_point_array[:,3] = diags_timeseries[diag_index(
+        "pelagic_CaCO3_deposition_rate"),:]
+    variable_point_array[:,4] = frac_diags_timeseries[
+        frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:]
+    variable_point_array[:,5] = frac_diags_timeseries[
+        frac_diag_index("coastal_sediment_fraction_runoff_flux"),CaCO3_sediment,:]
+    variable_point_array[:,6] = subduction_rates[CaCO3_sediment,:]
+    variable_point_array[:,7] = step_changes[CaCO3_sediment,:]
+    variable_point_array[:,8] = variable_point_array[:,7] + # step_changes
+        variable_point_array[:,6] - # subduction_rates
+        variable_point_array[:,1] - # continental_CaCO3_deposition_rate
+        variable_point_array[:,2] - # coastal_CaCO3_flux
+        variable_point_array[:,3] + # pelagic_CaCO3_deposition_rate
+        variable_point_array[:,4] # land_sediment_fraction_dissolution_rate
     plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
 
+    variable_point_array = accumulate_values!( variable_point_array )
+    plot_title = "cumulative CaCO3 fluxes"; variable_labels = ["inventory" "produced" "subducted" "bal"]
+    units_label = "m3"
+    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+
+
+    plot_title = "CaO fluxes"; variable_labels = ["orogenic prod" "land diss" "runoff" "subduct" "change" "bal"]
+    units_label = "m3/Myr"
+    n_lines = length(variable_labels)
+    variable_point_array = fill(0.,n_time_points,n_lines) 
+    variable_point_array[:,1] = frac_diags_timeseries[
+        frac_diag_index("crust_orogenic_fraction_flux"),CaO_sediment,:]
+    variable_point_array[:,2] = frac_diags_timeseries[
+        frac_diag_index("land_sediment_fraction_dissolution_rate"),CaO_sediment,:]
+    variable_point_array[:,3] = frac_diags_timeseries[
+        frac_diag_index("coastal_sediment_fraction_runoff_flux"),CaO_sediment,:]
+    variable_point_array[:,4] = subduction_rates[CaO_sediment,:]
+    variable_point_array[:,5] = step_changes[CaO_sediment,:]
+    variable_point_array[:,6] = variable_point_array[:,5] + # step_changes
+        variable_point_array[:,4] - # subduct
+        variable_point_array[:,1] + # crust_orogenic_fraction_flux
+        variable_point_array[:,2] # land_sediment_fraction_dissolution_rate
+    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+
+  
+    variable_point_array = accumulate_values!( variable_point_array )
+    plot_title = "cumulative CaO fluxes"; variable_labels = ["inventory" "produced" "subducted" "bal"]
+    units_label = "m3"
+    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+ 
+
+
     plot_title = "sediment inventories"
-    variable_labels = ["Clay land" "Clay ocean" "Clay tot" "CaCO3 land" "CaCO3 ocean" "CaCO3 tot"  ]
+    variable_labels = ["Clay land" "Clay ocean" "Clay tot" "CaCO3 land" "CaCO3 ocean" "CaCO3 tot" "CaO land" "CaO ocean" "CaO tot" ]
     units_label = "m3"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
@@ -702,46 +876,14 @@ function create_timeseries_charts(  )
     variable_point_array[:,4] = land_inventory_timeseries[CaCO3_sediment,:]
     variable_point_array[:,5] = ocean_inventory_timeseries[CaCO3_sediment,:]
     variable_point_array[:,6] = variable_point_array[:,4] + variable_point_array[:,5]
+    variable_point_array[:,7] = land_inventory_timeseries[CaO_sediment,:]
+    variable_point_array[:,8] = ocean_inventory_timeseries[CaO_sediment,:]
+    variable_point_array[:,9] = variable_point_array[:,7] + variable_point_array[:,8]
     plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
 
-    plot_title = "cumulative clay fluxes"; variable_labels = ["inventory" "produced" "subducted" "bal"]
-    units_label = "m3"
-    n_lines = length(variable_labels)
-    variable_point_array = fill(0.,n_time_points,n_lines) 
 
-    clay_inv = land_inventory_timeseries[clay_sediment,:] .+ ocean_inventory_timeseries[clay_sediment,:]
-    clay_prod = cum_diags_timeseries[diag_index(
-        "crust_clay_source_rate"),:]
-    clay_subduct = cum_subduction_rates[clay_sediment,1:end]
-        #=cum_frac_diags_timeseries[frac_diag_index(
-        "ocean_subduct_sediment_fraction_thickness"),clay_sediment,:] +
-        cum_frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),clay_sediment,:]# .+ clay_inv[1]=#
-    variable_point_array[:,1] = clay_inv
-    variable_point_array[:,2] = clay_prod #.+ clay_inv[1]
-    variable_point_array[:,3] = clay_subduct# .+ clay_inv[1]
-    variable_point_array[:,4] = clay_inv .+ clay_subduct .- clay_prod 
-    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+  
 
-    plot_title = "cumulative CaCO3 fluxes"; variable_labels = ["inventory" "produced" "subducted" "bal"]
-    units_label = "m3"
-    n_lines = length(variable_labels)
-    variable_point_array = fill(0.,n_time_points,n_lines) 
-    CaCO3_inv = land_inventory_timeseries[CaCO3_sediment,:] .+ ocean_inventory_timeseries[CaCO3_sediment,:]
-    CaCO3_prod = cum_diags_timeseries[diag_index(
-        "coastal_CaCO3_flux"),:] .+
-        cum_diags_timeseries[diag_index(
-        "pelagic_CaCO3_deposition_rate"),:]
-    CaCO3_subduct = cum_subduction_rates[CaCO3_sediment,1:end]
-        #=cum_frac_diags_timeseries[frac_diag_index(
-        "ocean_subduct_sediment_fraction_thickness"),CaCO3_sediment,:] +
-        cum_frac_diags_timeseries[frac_diag_index(
-        "continent_subduct_sediment_fraction_thickness"),CaCO3_sediment,:]# .+ clay_inv[1]=#
-    variable_point_array[:,1] = CaCO3_inv
-    variable_point_array[:,2] = CaCO3_prod #.+ clay_inv[1]
-    variable_point_array[:,3] = CaCO3_subduct# .+ clay_inv[1]
-    variable_point_array[:,4] = CaCO3_inv .+ CaCO3_subduct .- CaCO3_prod
-    plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
 
     plot_title = "average thickness"; variable_labels = ["land" "ocean"]
     units_label = "m"
@@ -755,9 +897,35 @@ function create_timeseries_charts(  )
     variable_point_array[:,2] = ocean_thickness
     plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
 
-    plot_title = "elevation"; variable_labels = ["land mean" "ocean mean" "max"]
+
+    plot_title = "fraction denuded"
+    units_label = "%"; variable_labels = ["gridplates" "present-day"]
+    variable_point_array = fill(0.,n_time_points,2) 
+    variable_point_array[:,1] .= fraction_denuded .* 100.
+    variable_point_array[:,2] .= NaN
+    variable_point_array[end,2] = 35.
+    #n_lines = 1
+    Plots.plot(time_points,variable_point_array[:,1],title=plot_title,label=variable_labels[1])
+    Plots.xlabel!("Myr")
+    Plots.ylabel!(units_label)
+    Plots.scatter!(time_points,variable_point_array[:,2],label=variable_labels[2])
+  
+    charts_output_directory = "../" * output_directory * output_tag * "/" *
+        charts_directory
+    file_label = charts_output_directory * "/" *
+        replace(plot_title," " => "_") * "." * output_tag * ".png"
+    println("saving ", file_label)
+    Plots.savefig(file_label)
+    
+
+    #plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+
+
+    plot_title = "elevation"; variable_labels = ["land mean * 10" "ocean mean" "max"]
     units_label = "m"
+    elevation_timeseries[:,1] .*= 10
     plot_time_series( time_points,elevation_timeseries,plot_title,variable_labels,units_label)
+
 
     plot_title = "uplift rates"; variable_labels = ["continental" "subduction zone"]
     units_label = "m/Myr"
@@ -767,13 +935,26 @@ function create_timeseries_charts(  )
         diag_index("subduction_orogenic_uplift_rate"),:]
     plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
     
+    plot_compare_elevations()
 end
+function accumulate_values!( variable_point_array )
+    n_values = size( variable_point_array )[1]
+    n_lines = size( variable_point_array )[2]
+    for i_value in 2:n_values
+        for i_line in 1:n_lines
+            variable_point_array[i_value,i_line,] += 
+                variable_point_array[i_value-1,i_line]
+        end
+    end
+    return variable_point_array
+end
+
 function plot_time_series(time_points,variable_point_array,plot_title,variable_labels,units_label)
     Plots.plot(time_points,variable_point_array,title=plot_title,label=variable_labels)
     Plots.xlabel!("Myr")
     Plots.ylabel!(units_label)
-    cd( base_directory * "/" * output_directory * output_tag )
-    charts_output_directory = base_directory * "/" * output_directory * output_tag * "/" *
+    #cd( "../" * output_directory * output_tag )
+    charts_output_directory = "../" * output_directory * output_tag * "/" *
         charts_directory
     #if charts_output_directory in readdir()
     #else
@@ -803,6 +984,40 @@ function plot_add_time_series!(scene,time_points,variable)
     lines!(ax,time_points,variable)
     return scene
 end
+function plot_compare_elevations()
+    etopo = read_flip_csv( "../" * 
+        code_base_directory * "/" * "etopo.csv")
+    world = read_world(0)
+    obs_elevation_grid = [-4000.]
+    while obs_elevation_grid[end] < 4000.
+        push!(obs_elevation_grid,obs_elevation_grid[end] + 100. )
+    end
+    n_points = length(obs_elevation_grid)
+    variable_point_list = fill(0.,n_points,2)
+    sum_elevation_x_area = fill(0.,n_points)
+    sum_area = fill(0.,n_points)
+    for ix in 1:nx
+        for iy in 1:ny
+            i_bin = search_sorted_nearest(obs_elevation_grid,etopo[ix,iy])
+            sum_elevation_x_area[i_bin] += world.freeboard[ix,iy] * areabox[iy]
+            sum_area[i_bin] += areabox[iy]
+        end
+    end
+    variable_point_list[:,1] = sum_elevation_x_area ./ ( sum_area .+ 1. )
+    variable_point_list[:,2] = obs_elevation_grid
+    plot_title = "freeboard comparison with ETOPO"
+    variable_names = ["gridplates present-day" "1:1"]
+    #plot_time_series( time_points,variable_point_array,plot_title,variable_labels,units_label)
+    Plots.plot(obs_elevation_grid,variable_point_list,title=plot_title,label=variable_names)
+    charts_output_directory = "../" * output_directory * output_tag * "/" *
+        charts_directory
+    file_label = charts_output_directory * "/" * 
+        "freeboard_compare." * output_tag * ".png"
+    println("saving ", file_label)
+    Plots.savefig(file_label)
+end
+
+
 function zoom_plot_field(field)
     minval,maxval = min_max_field(field)
     scene = zoom_plot_field(field,minval,maxval)
@@ -960,7 +1175,14 @@ function plot_field_with_colortab!(scene,field,minval,maxval,xoffset,yoffset,sty
     #text!(scene,string(Int(floor(maxval))),position=(190,85),textsize=10)
     cmap = Reverse(:lightrainbow)
     if style == "freeboard"
-        cmap = Reverse(:gist_earth)
+        deepocean = colorant"midnightblue"
+        shallowocean = colorant"turquoise1"
+        ocean_cmap = range(deepocean,stop=shallowocean,length=100)
+        lowland = colorant"darkgreen"
+        upland = colorant"moccasin"
+        land_cmap = range(lowland,stop=upland,length=100)
+        cmap = vcat(ocean_cmap,land_cmap)
+        cmap = Reverse(cmap)
     end
     Makie.heatmap!(scene,xplotcoords .+ xoffset,ycoords .+ yoffset,colorfield,
         colorrange=(maxval,minval),colormap=cmap)#thermometer)#lightrainbow)
@@ -975,7 +1197,8 @@ function plot_add_timestamp!(scene)
     return scene
 end
 function plot_add_timestamp!(scene,age,xpos,ypos)
-    timestamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(age)
+    timestamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(age) *
+        ", Sea level = " * string(Int(floor(world.sealevel))) * " m"
     text!(scene, timestamp, position = (xpos,ypos),textsize=15)
     return scene
 end
@@ -1040,7 +1263,7 @@ function plot_add_streamlines!(scene) # sprinkle flowpathlines over map
 end
 function plot_add_coast_lines!(scene)
     landmask = ge_mask(world.freeboard,0.)
-    Makie.contour!(scene,xcoords,ycoords,landmask,color=:black)
+    Makie.contour!(scene,xcoords,ycoords,landmask,color=:brown)
     return scene
 end
 function plot_add_continent_outlines!(scene)
@@ -1128,9 +1351,70 @@ function plot_sediment_thickness()
     scene = plot_field(scaled_thickness,0.,1.)
     return scene
 end
+function plot_sediment_thickness_age(image_file_name::String="")
+    bin_width = 5.; bin_max = 200
+    n_bins = Int( bin_max / bin_width )
+    ages = fill(0.,n_bins)
+    variable_labels = ["gridplates" "Olson 2016 3rd-order global present-day"]
+    plot_title = string(Int(world.age)) * " Myr"
+    n_variables = length(variable_labels)
+    variable_point_array = fill(0.,n_bins,n_variables)
+    area_totals = fill(0.,n_bins)
+    thickness_totals = fill(0.,n_bins)
+    # observational fit from Olson 
+    c0 = 7.389E1
+    c1 = 9.443
+    c2 = -1.358e-1
+    c3 = 1.396e-3
+    #olson_fit = fill(0.,n_bins)
+    for i_column in 1:n_bins
+        age = bin_width * ( i_column - 1 )
+        ages[i_column] = age
+        if age < 120
+            variable_point_array[i_column,2] = c0 + c1 * age + c2 * age^2 + c3 * age^3
+        else
+            variable_point_array[i_column,2] = NaN
+        end
+    end
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.crust_type[ix,iy] == ocean_crust
+                age_bin = Int(floor( world.crust_age[ix,iy] / bin_width )) + 1
+                if age_bin < n_bins
+                    thickness_totals[age_bin] += world.sediment_thickness[ix,iy] * areabox[iy]
+                    area_totals[age_bin] += areabox[iy]
+                end
+            end
+        end
+    end
+    variable_point_array[:,1] = thickness_totals ./ ( area_totals .+ 1. )
+    Plots.plot(ages,variable_point_array,title=plot_title,label=variable_labels)
+    Plots.xlabel!("Crust age, Myr")
+    Plots.ylabel!("Mean Sediment Thickness, m")
+    if image_file_name == ""
+        return
+    else
+        if image_file_name == "chart"
+            charts_output_directory = "../" * output_directory * output_tag * "/" *
+                charts_directory
+            image_file_name = charts_output_directory * "/" *
+                "sed_thickness_age." * output_tag * ".png"
+        else
+            anim_directory =  "../" * output_directory * output_tag * "/" * 
+                animation_directory * "/" * "sed_thickness_age/" 
+            image_file_name = anim_directory * image_file_name
+        end
+        println("saving ", image_file_name)
+        Plots.savefig(image_file_name)
+    end
+end
+    
 function plot_elevation()
-    scaled_thickness = land_ocean_scale(world.freeboard,0.,5000.,-6000.,-2000.)
-    scene = plot_field(scaled_thickness,0.,1.)
+    #scaled_thickness = land_ocean_scale(world.freeboard,0.,5000.,-6000.,0.)
+    scene = setup_plot_field()
+    scene = plot_field_with_colortab!(scene,world.freeboard,-5000,5000,0,0,"freeboard")
+    
+    #plot_field(scaled_thickness,0.,1.)
     return scene
 end
 
@@ -1390,3 +1674,5 @@ function sphere_stream_plot(field,lat,longt)
     add_sphereplot_streamlines!(scene,lat,longt)
     return scene
 end
+
+ 
