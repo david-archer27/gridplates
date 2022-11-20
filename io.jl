@@ -254,7 +254,8 @@ end
 # Animations
 function create_output_html_directory( )
     cd( output_location )
-    if html_directory in readdir()
+    html_directory_name = html_directory[findlast("/", output_directory )[1]+1:end]
+    if html_directory_name in readdir()
     else
         mkdir( html_directory  )
         println( "creating ", html_directory  )
@@ -262,22 +263,27 @@ function create_output_html_directory( )
     in_filename = utils_directory * "/index_template.html"
     out_filename = html_directory * "/index.html"
     in_file = open(in_filename)
-    out_file = open(out_filename)
+    out_file = open(out_filename,"w")
     lines = readlines(in_file)
     for line in lines
-        newline = replace(line, "0" => output_tag )
+        newline = replace(line, "output_tag" => output_tag )
         println(out_file,newline )
     end
+    close(out_file)
     cd( charts_directory )
     for file in readdir()
         if file[end-3:end] == ".png"
-           cp( file, html_directory * "/" * file )
+           cp( file, html_directory * "/" * file, force=true )
         end
     end
     cd( animation_directory )
     for file in readdir()
         if file[end-3:end] == ".mp4"
-           cp( file, html_directory * "/" * file )
+            cp( file, html_directory * "/" * file, force=true )
+            variable_name = file[1:findfirst(".", file )[1]-1]
+            #cd( variable_name )
+            cp( variable_name * "/img.001.png", 
+                html_directory * "/" * variable_name * ".0.png", force=true)
         end
     end
     cd( code_base_directory )
