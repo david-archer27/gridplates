@@ -16,12 +16,20 @@ Land sediment transport is diffusive with a transport coefficient set in params.
 
 Ocean sediment deposition is governed by the constraint that we mustn't overfill the accomodation space (water depth).  Runoff from the continent is tabulated at coastal ocean grid cells, along with coastal CaCO3 depositon and whatever.  First the flux fields are smoothed based on a diffusion constant.  Then the coastal grid cells are queried for whether they overflow or not, and if they do, their mass is transferred inward, away from the coast.  This repeats until all the mass is accomodated.  
 
+CaCO3 deposition in the ocean is divided into three mechanisms.  Pelagic deposition depends on latitude, water depth, and an ocean CO3 parameter.  CaCO3 rolls off of continents into coastal points at rates that depend on latitude and ocean CO3.  When sea level floods continental crust, CaCO3 deposits more-or-less up to sea level, although attenuated in high latitudes.  The global total burial rate of CaCO3 is specified, and the ocean CO3 parameter is iterated to find the value which gives the right flux.  
+
+A "CaO" fraction of sediment (alongside unreactive "clays" and CaCO3) is intended to represent the CO2-consuming weathering flux as fresh clays weather.  Continental dissolution fluxes of both CaCO3 and CaO are based on a reconstructed latitudinal dependence of runoff, and observed (simplified) runoff / dissolution flux relationships.  Ultimately it should be possible to constrain an atmospheric CO2 parameter based on the constraint that the weathering of exposed bedrock plus clay "CaO" must provide enough Ca to convert a CO2 degassing flux to the atmoshere into CaCO3.   
+
 The file main.jl contains the master plan and major operations, including running a time series, creating plots and animations from the simulation, and creating an html directory with copies of all the files.  The model can be invoked at a Julia command line as 
 
 include("main.jl")
 
-and where you might want to go from there is basically in that file.  
+and where you might want to go from there is basically in that file.  Notable routines are run_timeseries(), animate_all(), create_timeseries_charts(), and create_output_html_directory( ), or just run_and_plot_simulation() or run_and_plot_orogeny_simulation().  
 
-Parameters tunable and otherwise are kept in params.jl .  Here you control what the simulation will be called, and how long it will span.  There is an option there for accelerated simulation of just the orography, without all the mud.  
+Parameters tunable and otherwise are kept in params.jl .  Here you control what the simulation will be called, and how long it will span.  There is an option there for accelerated simulation of just the orography, without all the mud.  The output files from the simulation will be placed alongside the "gridplates" git directory.  
+
+The world state is saved every time step for diagnostics and graphics.  Plates files are saved periodically for use in restarting a simulation.  There has to be a separate file for each plate to avoid a 2 GB restriction in the BSON format, and you can't save the plates every step or they will eat your computer.  
+
+The graphics are based on Makie and Plots, and are of course available for interactive use at the command line as well as for making the saved output files. 
 
 
