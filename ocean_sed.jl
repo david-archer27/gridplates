@@ -180,10 +180,6 @@ function smooth_ocean_area!( sed_fluxes, blob )
             for i_pos = 1:list_pos_filled
                 ix = list_x[i_pos]; iy = list_y[i_pos]
                 sed_fluxes[ix,iy,i_sedtype] = new_values_list[i_pos]
-                #set_frac_diag("seafloor_sediment_fraction_deposition_rate",
-                #    ix,iy,i_sedtype,new_values_list[i_pos])
-                #accum_diag("seafloor_sediment_deposition_rate",
-                #    ix,iy,new_values_list[i_pos])
             end
         end
     end # diffuse or no
@@ -446,7 +442,6 @@ function find_nearest_fringe_point(ix,iy,blob_fringe_list)
             min_x = ixf; min_y = iyf
         end
     end
-    #error("found min", [ix,iy,ixf,iyf])
     return min_x,min_y
 end
 function redistribute_trapped_land_fluxes_original_recipe!( trapped_overflow_fluxes,

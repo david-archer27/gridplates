@@ -1181,8 +1181,7 @@ function nearest_scotese_elevation()
         stringage = string(scotese_age)
     end
     #println(stringage)
-    filename = base_directory * "/" * 
-        scotese_data_directory * "/scotese." * stringage * "Ma.bson"
+    filename = scotese_data_directory * "/scotese." * stringage * "Ma.bson"
     println("reading ", filename)
     BSON.@load filename field
     return field, scotese_age

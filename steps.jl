@@ -987,7 +987,6 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
 
     isostacy()
 end
-
 function step_budgets()
     #land_source_fluxes = fill(0.,0:n_sediment_types)
     land_orogen_fluxes = fill(0.,0:n_sediment_types)
@@ -1197,32 +1196,3 @@ function step_budgets()
         world_source_fluxes .+ world_dissolution_fluxes ) # .+ ocn2cont_redist_sources ) # .+ cont2ocn_redist_sources )
 
 end
-
-function run_timeseries()
-    global log_IO = open( "../" * output_directory * output_tag * "/logfile." * output_tag * ".txt", "w" )
-    #cd( base_directory * "/" * code_base_directory )
-
-  
-    save_world()
-    while world.age > 0
-        verbose = true
-        if floor(world.age/100) == world.age/100 || world.age == main_time_step
-            verbose = true
-        end
-        step_everything( )
-        flush( log_IO )
-        save_world()
-        time_interval = main_time_step * 10
-        if floor(world.age/time_interval) == world.age/time_interval && 
-            world.age >= time_interval
-
-            save_plates()
-        end
-        #if world.age == 501 # <= 2 * main_time_step
-        #    save_plates()
-        #end
-        flush(log_IO)
-    end
-    close(log_IO)
-end
-

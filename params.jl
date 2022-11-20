@@ -212,16 +212,23 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-#base_directory = ".."
+output_tag = "saturday.full"
+
 code_base_directory = pwd() # "gridplates"
-output_directory = "outfiles." 
-output_tag = "saturday"
-animation_directory = "animations"
-world_directory = "world"
-plate_directory = "plates"
-charts_directory = "charts"
-code_backup_directory = "code_bak"
-scotese_data_directory = "scotese_elevation_files"
+plateID_input_directory = code_base_directory * "/plates"
+continent_input_directory = code_base_directory * "/continents"
+utils_directory = code_base_directory * "/utils"
+output_location = code_base_directory[1:findlast("/", code_base_directory )[1]-1]
+output_directory = output_location * "/" * "outfiles." * output_tag
+html_directory = output_location * "/html." * output_tag
+
+animation_directory = output_directory * "/animations"
+world_directory = output_directory * "/world"
+plate_directory = output_directory * "/plates"
+continents_directory = output_directory * "/continents"
+charts_directory = output_directory * "/charts"
+code_backup_directory = output_directory * "/code_bak"
+scotese_data_directory = code_base_directory * "/data/scotese_elevation_files"
 animation_directories = ["elevation","pct_CaCO3","pct_CaO",
     "crust_age","crust_thickness","crust_thickening_rate","sed_thickness","sed_rate",
     "sed_thickness_age","scotese_elevation"]
@@ -295,6 +302,7 @@ orogenic_erosion_tau_apparent *= 10.
 orogenic_uplift_parameter /= 1.5
 #subduction_orogeny_smooth_coeff = 0.
 
+
 function create_orogenies()
     orogenic_events = Dict()
     orogenic_events["Pan_African"] =
@@ -342,7 +350,7 @@ end
 land_sediment_dissolution_rate_constants = [0.0,0.01,0.01] # per Myr
 land_sediment_dissolution_2xCO2 = [0.,0.,0.]
 global_CaCO3_net_burial_flux = 1.e15 # today fluxes
-seafloor_base_diffcoeff = 3.e4 # m2 / yr
+seafloor_base_diffcoeff = 6.e4 # m2 / yr
 
 
 # CaCO3 parameters
