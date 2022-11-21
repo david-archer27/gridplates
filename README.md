@@ -1,4 +1,4 @@
-Gridplates is an attempt to simulate the movements, sources, and sinks of sedimentary rocks through the Phanerozoic. Also the fluxes of carbon, and the climate state that would be constrained by them.  
+Gridplates is an attempt to simulate the movements, sources, and sinks of sedimentary rocks through the Phanerozoic. Also the fluxes of carbon, and the climate state that would be constrained by them.  Latest results are presented at http://geosci.uchicago.edu/~archer/gridplates .  
 
 The model is driven by a reconstruction within GPlates.  Any reconstruction should work but currently the only available simulation that has the required "dynamic polygon" representation of the plate outcrops is from Merdith.  Shapefiles were saved every million years, and converted to csv text files using pygplates and the python scripts provided in utils.  
 
