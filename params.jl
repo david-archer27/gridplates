@@ -212,7 +212,7 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "saturday.full"
+output_tag = "monday"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"

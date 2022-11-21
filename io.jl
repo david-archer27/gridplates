@@ -279,6 +279,7 @@ function create_output_html_directory( )
     cd( animation_directory )
     for file in readdir()
         if file[end-3:end] == ".mp4"
+            println("moving ", file)
             cp( file, html_directory * "/" * file, force=true )
             variable_name = file[1:findfirst(".", file )[1]-1]
             #cd( variable_name )
@@ -960,7 +961,7 @@ function plot_compare_sedthick()
     file_label = charts_directory * "/" * 
         "sedthick_compare." * output_tag * ".png"
     println("saving ", file_label)
-    Plots.savefig(file_label)
+    Makie.save(file_label,scene)
 end
 function zoom_plot_field(field)
     minval,maxval = min_max_field(field)
