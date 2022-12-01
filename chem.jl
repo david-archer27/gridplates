@@ -49,7 +49,7 @@ function find_steady_state_ocean_CO3( target_CaCO3_deposition_rate )
             ocean_CO3_low = ocean_CO3; depo_low = total_deposition
         end
         imbalance = abs( total_deposition - target_CaCO3_deposition_rate )
-        #println(" CO3 ",ocean_CO3," " )
+        println(" CO3 ",ocean_CO3," ",ocean_CO3_high," ",ocean_CO3_low," ",total_deposition )
     end
     println()
     println("  CaCO3 iters ", n_iters, " tot ", total_deposition, 
@@ -83,7 +83,9 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
                     if world.freeboard[ix,iy] < shelf_depth_CaCO3
                         accom_meters = ( shelf_depth_CaCO3 - world.freeboard[ix,iy] ) /
                             sediment_freeboard_expression
-                        shallow_rates[ix,iy] = accom_meters / main_time_step * CaCO3_latitude_scale( iy )
+                        max_rate = accom_meters / main_time_step * CaCO3_latitude_scale( iy )
+                        rate_limit = get_coastal_CaCO3_deposition_rate( ocean_CO3, iy )
+                        shallow_rates[ix,iy] = min( max_rate, rate_limit )
                     end
                 end
             end
@@ -153,75 +155,248 @@ function CaCO3_latitude_scale( iy )
     lat_scale = exp( - ( ( lat / CaCO3_deposition_lat_scale )^2 ) )
     return lat_scale
 end
-function generate_runoff_transect()
-    runoff_tropics_width = 15.
-    runoff_tropical_bulge_base = 1. # m / yr
-    runoff_background_base = 0.1
-    runoff_transect = fill(0.,ny)
+function generate_met_transects()
+    q_transect = fill(0.,ny)
+    west_coast_rainfall_penetration = fill(0.,ny)
+    east_coast_rainfall_penetration = fill(0.,ny)
     for iy in 1:ny
-        tropical_bulge = runoff_tropical_bulge_base * 
-            exp( - ycoords[iy]^2 / ( runoff_tropics_width )^2)
-        runoff_transect[iy] = tropical_bulge + runoff_background_base
+        tropical_bulge = runoff_tropical_max_rate * 
+            exp( - ycoords[iy]^2 / ( runoff_tropical_max_width )^2 )
+        subpolar_bulge = runoff_subpolar_max_rate * (
+            exp( - ( ycoords[iy] - runoff_subpolar_max_lat ) ^2 / ( runoff_subpolar_max_width )^2 ) +
+            exp( - ( ycoords[iy] + runoff_subpolar_max_lat ) ^2 / ( runoff_subpolar_max_width )^2 ) )
+        q_transect[iy] = minimum_runoff + tropical_bulge + subpolar_bulge
+        east_coast_rainfall_penetration[iy] = tropical_bulge * 
+            runoff_east_coast_penetration_scale
+        west_coast_rainfall_penetration[iy] = subpolar_bulge * 
+            runoff_west_coast_penetration_scale
     end     
-    q_transect = runoff_transect ./ 3.14e7 * # m3 / s / m2
+    q_transect = q_transect / 3.14e7 * # m3 / s / m2
         1000. * # l / s / m2
         1.e6 # l / km2 s
-    return q_transect
+    return q_transect, east_coast_rainfall_penetration, west_coast_rainfall_penetration
 end
 
-function subaereal_sediment_dissolution()
-    land_sediment_dissolution_rates = fill(0.,nx,ny,0:n_sediment_types)
-    land_dissolved_Ca_prod_rates = fill(0.,nx,ny)
-    q_transect = generate_runoff_transect()
-    bedrock_FCO2_coeff = 0.25 # Suchet 2003 combined shield,basalt,acid volc
-    carbonate_FCO2_coeff = 1.6 
-    shale_FCO2_coeff = 0.6
+function generate_runoff_map()
+
+    west_coast_maritime_boost = fill(0.,nx,ny)
+    east_coast_maritime_boost = fill(0.,nx,ny)
+    runoff_map = fill(0.,nx,ny) 
+    land_mask = ge_mask( world.freeboard, 0. )
+
+    q_transect, east_coast_rainfall_penetration, west_coast_rainfall_penetration = 
+        generate_met_transects( )
+
+    for iy in 1:ny
+
+        west_coast_maritime_boost[1,iy] = 0.
+        if land_mask[1,iy] == 0
+            west_coast_maritime_boost[1,iy] = 1.
+        end
+        for ix in 2:nx
+            if land_mask[ix,iy] == 0
+                west_coast_maritime_boost[ix,iy] = 1.
+                #println(ix," ",1.)
+            else
+                #=downwind_slope = ( world.freeboard[ix,iy] - world.freeboard[ix-1,iy] ) /
+                    delta_x[iy]
+                rain_shadow_pull = 0.
+                if downwind_slope > 0.
+                    rain_shadow_pull = downwind_slope *
+                        rain_shadow_slope_parameter
+                end=#
+                west_coast_maritime_boost[ix,iy] = 
+                    west_coast_maritime_boost[ix-1,iy] *
+                    exp( - delta_x[iy] / west_coast_rainfall_penetration[iy] )
+                    #println(ix," ",maritime_boost[ix,iy])
+            end
+        end
+        if land_mask[1,iy] == 1 # wrap around
+            west_coast_maritime_boost[1,iy] = 
+                west_coast_maritime_boost[nx,iy] *
+                exp( - delta_x[iy] / west_coast_rainfall_penetration[iy] )
+            ix_next = 2; run_another_loop = true
+            while ix_next < nx && run_another_loop
+                if land_mask[ix_next,iy] == 1 # carry along
+                    west_coast_maritime_boost[ix_next,iy] = 
+                        west_coast_maritime_boost[ix_next-1,iy] *
+                        exp( - delta_x[iy] / west_coast_rainfall_penetration[iy] )
+                else # its water so were done
+                    run_another_loop = false
+                end
+                ix_next += 1
+            end
+        end
+
+        east_coast_maritime_boost[nx,iy] = 0.
+        if land_mask[nx,iy] == 0
+            east_coast_maritime_boost[nx,iy] = 1.
+        end
+        for ix in nx-1:-1:1
+            if land_mask[ix,iy] == 0
+                east_coast_maritime_boost[ix,iy] = 1.
+                #println(ix," ",1.)
+            else
+                #=downwind_slope = ( world.freeboard[ix,iy] - world.freeboard[ix-1,iy] ) /
+                    delta_x[iy]
+                rain_shadow_pull = 0.
+                if downwind_slope > 0.
+                    rain_shadow_pull = downwind_slope *
+                        rain_shadow_slope_parameter
+                end=#
+                east_coast_maritime_boost[ix,iy] = 
+                    east_coast_maritime_boost[ix+1,iy] *
+                    exp( - delta_x[iy] / east_coast_rainfall_penetration[iy] )
+                    #println(ix," ",maritime_boost[ix,iy])
+            end
+        end
+        if land_mask[nx,iy] == 1 # wrap around
+            east_coast_maritime_boost[nx,iy] = 
+                east_coast_maritime_boost[1,iy] *
+                exp( - delta_x[iy] / east_coast_rainfall_penetration[iy] )
+            ix_next = nx-1; run_another_loop = true
+            while ix_next > 1 && run_another_loop
+                if land_mask[ix_next,iy] == 1 # carry along
+                    east_coast_maritime_boost[ix_next,iy] = 
+                        east_coast_maritime_boost[ix_next+1,iy] *
+                        exp( - delta_x[iy] / east_coast_rainfall_penetration[iy] )
+                else # its water so were done
+                    run_another_loop = false
+                end
+                ix_next -= 1
+            end
+        end
+    end
+    #smooth_world!( maritime_boost, maritime_rainfall_smoothing )
+
+    for iy in 1:ny
+        runoff_map[:,iy] = q_transect[iy] .*
+            ( west_coast_maritime_boost[:,iy] + 
+            east_coast_maritime_boost[:,iy] ) .+
+            minimum_runoff
+    end 
+    smooth_world!( runoff_map, runoff_smoothing  )
+    for ix in 1:nx
+        for iy in 1:ny
+            if land_mask[ix,iy] == 0
+                runoff_map[ix,iy] = 0.
+            end
+        end
+    end
+    return runoff_map
+
+#=    maritime_boost = fill(0.,nx,ny)
+    runoff_map = fill(0.,nx,ny) 
+    delta_x_rainfall_penetration = 10. * delta_x[90]
+    rain_shadow_slope_parameter = 100.
+    for iy in 1:ny
+        maritime_boost[1,iy] = 0.
+        if world.freeboard[1,iy] < 0.
+            maritime_boost[1,iy] = 1.
+        end
+        for ix in 2:nx
+            if world.freeboard[ix,iy] < 0.
+                maritime_boost[ix,iy] = 1.
+                #println(ix," ",1.)
+            else
+                downwind_slope = ( world.freeboard[ix,iy] - world.freeboard[ix-1,iy] ) /
+                    delta_x[iy]
+                rain_shadow_pull = 0.
+                if downwind_slope > 0.
+                    rain_shadow_pull = downwind_slope *
+                        rain_shadow_slope_parameter
+                end
+                maritime_boost[ix,iy] = maritime_boost[ix-1,iy] *
+                    exp( - delta_x[iy] / delta_x_rainfall_penetration -
+                        rain_shadow_pull )
+                    #println(ix," ",maritime_boost[ix,iy])
+            end
+        end
+        if world.freeboard[1,iy] > 0. # wrap around
+            maritime_boost[1,iy] = maritime_boost[nx,iy] *
+                exp( - delta_x[iy] / delta_x_rainfall_penetration )
+            ix_next = 2; run_another_loop = true
+            while ix_next < nx && run_another_loop
+                ix_next += 1
+                if world.freeboard[ix_next,iy] > 0. # carry along
+                    maritime_boost[ix_next,iy] = maritime_boost[ix_next-1,iy] *
+                        exp( - delta_x[iy] / delta_x_rainfall_penetration )
+                else # its water so were done
+                    run_another_loop = false
+                end
+            end
+        end
+    end
+    continental_rainfraction = 0.2
+    total_boost = maritime_boost .* ( 1. - continental_rainfraction ) .+
+        continental_rainfraction
+    latitudinal_q_transect = generate_runoff_transect()
+    for iy in 1:ny
+        runoff_map[:,iy] = latitudinal_q_transect[iy] .*
+            total_boost[:,iy]   
+    end 
+    runoff_map .*= gt_mask(world.freeboard,0.)
+    return runoff_map =#
+end
+
+
+function subaereal_sediment_dissolution( runoff_map )
+    land_sediment_dissolution_rates = fill(0.,nx,ny,0:n_sediment_types) # m3 / Myr
+    land_orogenic_Ca_source_rates = fill(0.,nx,ny) # eq CaCO3 m3 / Myr
+    #q_transect = generate_runoff_transect()
+    
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] > 0.
-                #=if world.geomorphology[ix,iy] == exposed_basement
-                    land_dissolved_Ca_prod_rates[ix,iy] = 
-                        bedrock_FCO2_coeff *
-                        q_transect[iy] * 1.E-3 * # mol / km2 s 
-                        areabox[iy] / 1.e6 * # mol / s
-                        3.14E7 * 1.e6 # mol / Myr
-                end=#
+                if world.geomorphology[ix,iy] == exposed_basement
+                    land_orogenic_Ca_source_rates[ix,iy] = 
+                        exposed_basement_CO2uptake_coeff *
+                        #q_transect[iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s 
+                        56. * 3.14e7 * 1.e6 / # g / km2 Myr
+                        1.e6 / # g / m2 Myr
+                        rho_sediment / 1.e6 # m3 / m2 Myr
+                end
                 if world.geomorphology[ix,iy] == sedimented_land
                     land_sediment_dissolution_rates[ix,iy,CaO_sediment] = 
                         world.sediment_surface_fractions[ix,iy,CaO_sediment] *
-                        shale_FCO2_coeff * 
-                        q_transect[iy] * 1.E-3 * # mol / km2 s
+                        sediment_CaO_CO2uptake_coeff * 
+                        #q_transect[iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[iy] * 1.E-3 * # mol / km2 s
                         56. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
                     land_sediment_dissolution_rates[ix,iy,CaCO3_sediment] = 
                         world.sediment_surface_fractions[ix,iy,CaCO3_sediment] *
-                        carbonate_FCO2_coeff * 
-                        q_transect[iy] * 1.E-3 * # mol / km2 s
+                        sediment_CaCO3_CO2uptake_coeff * 
+                        #q_transect[iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[iy] * 1.E-3 * # mol / km2 s
                         100. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
-                        #world.sediment_thickness[ix,iy] * 
-                        #world.sediment_surface_fractions[ix,iy,i_sedtype] *
-                        #land_sediment_dissolution_rate_constants[i_sedtype] 
-                        # * 
-                        #( 1. + land_sediment_dissolution_2xCO2[i_sedtype] ) * 
-                        #( world.atmCO2 / atmCO2_base )
                     for i_sedtype in 1:n_sediment_types
                         land_sediment_dissolution_rates[ix,iy,i_sedtype] = 
                             min(land_sediment_dissolution_rates[ix,iy,i_sedtype],
-                            world.sediment_thickness[ix,iy] *
-                                world.sediment_surface_fractions[ix,iy,i_sedtype] /
-                                main_time_step * 0.3)
-                            land_sediment_dissolution_rates[ix,iy,i_sedtype] =
-                                max(land_sediment_dissolution_rates[ix,iy,i_sedtype],0.)
+                                world.sediment_thickness[ix,iy] *
+                                    world.sediment_surface_fractions[ix,iy,i_sedtype] /
+                                    main_time_step * 0.1)
+                        land_sediment_dissolution_rates[ix,iy,i_sedtype] =
+                            max(land_sediment_dissolution_rates[ix,iy,i_sedtype],0.)
                         land_sediment_dissolution_rates[ix,iy,0] += 
                             land_sediment_dissolution_rates[ix,iy,i_sedtype]
-
                     end
                 end
             end
         end
     end
-    return land_sediment_dissolution_rates, land_dissolved_Ca_prod_rates
+    return land_sediment_dissolution_rates, land_orogenic_Ca_source_rates
+end
+function land_flux_limit( flux,ix,iy,i_sedtype )
+    flux = 
+        min( flux,
+            world.sediment_thickness[ix,iy] *
+                world.sediment_surface_fractions[ix,iy,i_sedtype] /
+                main_time_step * 0.3 )
+    flux = max( flux, 0. )
+    return flux
 end

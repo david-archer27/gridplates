@@ -646,6 +646,11 @@ function aolean_transport()
                         world.sediment_surface_fractions[ix,iy,i_sedtype] *
                         aolean_erosion_rate_constant * # meters / Myr
                         rho_continent_crust / rho_sediment # m sediment / Myr
+                    aolean_erosion_rates[ix,iy,i_sedtype] = min( 
+                        aolean_erosion_rates[ix,iy,i_sedtype],
+                        world.sediment_thickness[ix,iy] *
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] *
+                        main_time_step / 10. )
                     #aolean_erosion_rates[ix,iy,0] += aolean_erosion_rates[ix,iy,i_sedtype]
                 end
             end

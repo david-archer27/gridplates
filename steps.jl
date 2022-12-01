@@ -686,32 +686,65 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
     world.crust_thickness .-= orogenic_erosion_rate_field .* main_time_step
 
     aolean_erosion_fields, aolean_deposition_fields = aolean_transport()
-    land_sediment_fraction_dissolution_rate_fields, land_dissolved_Ca_prod_rates = 
-        subaereal_sediment_dissolution()
-    #land_sediment_fraction_dissolution_rate_fields = 
-    #    subaereal_sediment_dissolution_orig()
-
     set_frac_diag("aolean_erosion_fraction_flux",aolean_erosion_fields)
     set_frac_diag("aolean_deposition_fraction_flux",aolean_deposition_fields)
     accum_frac_diag("land_sediment_fraction_deposition_rate",
         -1. .* aolean_erosion_fields[:,:,1:end])
     accum_diag("land_sediment_deposition_rate",
         -1. .* aolean_erosion_fields[:,:,0])
+
+    runoff_map = generate_runoff_map()
+    set_diag("land_Q_runoff_field", runoff_map)
+    land_sediment_fraction_dissolution_rate_fields, land_orogenic_Ca_source_rates = 
+        subaereal_sediment_dissolution( runoff_map )
     set_frac_diag("land_sediment_fraction_dissolution_rate",
         land_sediment_fraction_dissolution_rate_fields)
-    set_diag("land_dissolved_Ca_prod_rates", land_dissolved_Ca_prod_rates)
+    set_diag("land_orogenic_Ca_source_rates", land_orogenic_Ca_source_rates)
 
+    land_sediment_weathering_index = fill(0.,nx,ny)
+    CaO_CaCO3_free = fill(0.,nx,ny)
+    #CaO_calcite_free = fill(0.,nx,ny)
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.sediment_thickness[ix,iy] > 0.
+                if world.sediment_surface_fractions[ix,iy,CaO_sediment] + 
+                    world.sediment_surface_fractions[ix,iy,clay_sediment] > 0.
+                    CaO_CaCO3_free[ix,iy] = world.sediment_surface_fractions[ix,iy,CaO_sediment]  / 
+                        ( world.sediment_surface_fractions[ix,iy,CaO_sediment] 
+                        + world.sediment_surface_fractions[ix,iy,clay_sediment] ) 
+                    land_sediment_weathering_index[ix,iy] = 1. - 
+                        CaO_CaCO3_free[ix,iy] / orogenic_sediment_source_fractions[CaO_sediment] 
+                end
+            end
+        end
+    end
+    set_diag("land_sediment_weathering_index", land_sediment_weathering_index)
+    #set_diag("land_sediment_CaO_CaCO3_free", CaO_CaCO3_free)
+   
     logging_println("")
     logging_println("Ocean Sedimentation")
     #println("CaCO3 system")
 
-    ocean_CaCO3_deposition_rate = global_CaCO3_net_burial_flux
-    if enable_CaCO3_land_diss_ocean_repcp
-        continental_CaCO3_dissolution_rate = volume_field(
-            get_frac_diag("land_sediment_fraction_dissolution_rate",CaCO3_sediment))
-        println(" CaCO3 land diss, ", continental_CaCO3_dissolution_rate )
-        ocean_CaCO3_deposition_rate += continental_CaCO3_dissolution_rate
-    end
+    continental_CaCO3_dissolution_rate = volume_field(
+        land_sediment_fraction_dissolution_rate_fields[:,:,CaCO3_sediment] )
+    continental_CaO_dissolution_rate = volume_field(
+        land_sediment_fraction_dissolution_rate_fields[:,:,CaO_sediment] )
+    land_orogenic_Ca_source_rate = volume_field( land_orogenic_Ca_source_rates )
+    total_Ca_sources = land_orogenic_Ca_source_rate + 
+        continental_CaCO3_dissolution_rate + 
+        continental_CaO_dissolution_rate
+    logging_println(" Ca src tot, oro, sed CaCO3, Cao ", 
+        [ total_Ca_sources,
+        land_orogenic_Ca_source_rate, 
+        continental_CaCO3_dissolution_rate, 
+        continental_CaO_dissolution_rate,
+     ] )
+
+    ocean_CaCO3_deposition_rate = total_Ca_sources 
+    #global_CaCO3_net_burial_flux # m3 / Myr
+    #if enable_CaCO3_land_diss_ocean_repcp
+    #    ocean_CaCO3_deposition_rate += land_dissolved_Ca_prod_rate
+    #end
     ocean_CO3 = find_steady_state_ocean_CO3( ocean_CaCO3_deposition_rate )
 
     coastal_CaCO3_deposition_field = get_coastal_CaCO3_deposition_field( ocean_CO3 ) 

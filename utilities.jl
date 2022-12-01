@@ -182,10 +182,21 @@ function apply_land_sediment_fluxes( land_sediment_fraction_deposition_rate_fiel
     # called provisionally by set_land_runoff_fluxes, then again at the
     # end of the step.  hence returning fields to be applied, rather than
     # altering world.sediment_thickness and world.sediment_surface_fractions
-    new_sediment_thickness = world.sediment_thickness
-    for i_sedtype in 1:n_sediment_types
-        new_sediment_thickness += 
-            land_sediment_fraction_deposition_rate_fields[:,:,i_sedtype] .* main_time_step
+    new_sediment_thickness = deepcopy(world.sediment_thickness)
+    for ix in 1:nx
+        for iy in 1:ny
+            for i_sedtype in 1:n_sediment_types
+                new_sediment_thickness[ix,iy] += 
+                    land_sediment_fraction_deposition_rate_fields[ix,iy,i_sedtype] * 
+                    main_time_step
+                if new_sediment_thickness[ix,iy] < 0.
+                    println("negative thickness ",[ix,iy,
+                        world.sediment_thickness[ix,iy], 
+                        new_sediment_thickness[ix,iy]])
+                    new_sediment_thickness[ix,iy] = 0
+                end
+            end
+        end
     end
     new_sediment_fractions = deepcopy(world.sediment_surface_fractions)
     for ix in 1:nx
@@ -1021,13 +1032,15 @@ function field_RMS(field)
     valueRMS = sqrt( valuetot / areatot )
     return valueRMS
 end
-function field_mean(field)
+function field_mean(field, applies_map = fill(1,nx,ny))
     areatot = 0.
     valuetot = 0.
     for ix in 1:nx
         for iy in 1:ny
-            areatot += areabox[iy]
-            valuetot += areabox[iy] * field[ix,iy]
+            if applies_map[ix,iy] == 1
+                areatot += areabox[iy]
+                valuetot += areabox[iy] * field[ix,iy]
+            end
         end
     end
     valueavg = valuetot / areatot

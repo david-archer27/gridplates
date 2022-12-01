@@ -17,8 +17,9 @@ Land sediment transport is diffusive with a transport coefficient set in params.
 Ocean sediment deposition is governed by the constraint that we mustn't overfill the accomodation space (water depth).  Runoff from the continent is tabulated at coastal ocean grid cells, along with coastal CaCO3 depositon and whatever.  First the flux fields are smoothed into ocean grid points according to a diffusion constant.  Then the coastal grid cells are queried for whether they overflowed or not, and if they did, their mass is transferred inward, away from the coast.  This repeats until all the mass is accomodated. 
 
 CaCO3 deposition in the ocean is based on three mechanisms.  Pelagic deposition depends on latitude, water depth, and an ocean CO3 parameter.  CaCO3 rolls off of shallow waters surrounding continents into coastal points at rates that depend on latitude and ocean CO3.  When sea level floods continental crust, CaCO3 deposits more-or-less up to sea level, although attenuated in high latitudes.  The global total burial rate of CaCO3 is specified, and the ocean CO3 parameter is iterated to find the value which gives the right flux.  
+There is currently some bug in the CaCO3 budget.  
 
-A "CaO" fraction of sediment (alongside unreactive "clays" and CaCO3) is intended to represent the CO2-consuming weathering flux as fresh clays weather.  Continental dissolution fluxes of both CaCO3 and CaO are based on a reconstructed latitudinal dependence of runoff, and observed (simplified) runoff / dissolution flux relationships.  Ultimately it should be possible to constrain an atmospheric CO2 parameter based on the constraint that the weathering of exposed bedrock plus clay "CaO" must provide enough Ca to convert a CO2 degassing flux to the atmoshere into CaCO3.   
+A "CaO" fraction of sediment (alongside unreactive "clays" and CaCO3) is intended to represent the CO2-consuming weathering flux as fresh clays weather.  Continental dissolution fluxes of both CaCO3 and CaO are based on a rudimentary runoff field, and observed (simplified) runoff / dissolution flux relationships.  Ultimately it should be possible to constrain an atmospheric CO2 parameter based on the constraint that the weathering of exposed bedrock plus clay "CaO" must provide enough Ca to convert a CO2 degassing flux to the atmoshere into CaCO3. 
 
 The file main.jl contains the master plan and major operations, including running a time series, creating plots and animations from the simulation, and creating an html directory with copies of all the files.  The model can be invoked at a Julia command line as 
 
@@ -26,10 +27,14 @@ include("main.jl")
 
 and where you might want to go from there is basically in that file.  Notable routines are run_timeseries(), animate_all(), create_timeseries_charts(), and create_output_html_directory( ), or just run_and_plot_simulation() and run_and_plot_orogeny_simulation().  
 
-Parameters tunable and otherwise are kept in params.jl .  Here you control what the simulation will be called, and how long it will span.  The output files from the simulation are set to be placed alongside the "gridplates" git directory.  
+Parameters tunable and otherwise are kept in params.jl .  Here you control what the simulation will be called, and how long it will span.  The output files from the simulation are set to be placed alongside the "gridplates" git directory as specified here.  Model diagnostic parameters are stored in two giant arrays, the contents of which are specified in this file.  One array is specific for fields that apply to the individual sediment fractions (clay, CaCO3, and CaO).  The other is for fields like runoff that do not have separate values for the different sediment fractions.  These arrays are saved in the world output files, and all the post-processing and plotting is done by reading the world files.  
 
 The world state is saved every time step for diagnostics and graphics.  Plates files are saved periodically for use in restarting a simulation.  There has to be a separate file for each plate to avoid a 2 GB restriction in the BSON format, and you can't save the plates every step or they will eat your computer.  
 
-The graphics are based on Makie and Plots, and can be used interactively at the command line as well as for making the saved output files. 
+The graphics are based on Makie and Plots, and can be used interactively at the command line as well as for making the saved output files. Makie is beautiful but sometimes has perspective problems or other inexplicible bugs.  On my apple M1 I have to use v0.4.7 ; more recent versions don't work.  It is worth using multiple cores by setting that preference in VSC or invoking the julia executable using --threads=8 (or however many).  
+
+
+
+
 
 

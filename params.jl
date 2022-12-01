@@ -81,7 +81,7 @@ world_diag_names = ["ocean_created_plate_area",
     "continent_orogenic_uplift_rate",   # set in outer time loop, uplift +, meters / Myr
     "subduction_orogenic_uplift_rate",  
     "crust_erosion_rate",               # units m/Myr, calc on substep
-    "land_dissolved_Ca_prod_rates",
+    "land_orogenic_Ca_source_rates",
     #"crust_clay_source_rate",
     #"aolean_clay_erosion_rate", 
     #"aolean_clay_deposition_rate", 
@@ -89,6 +89,8 @@ world_diag_names = ["ocean_created_plate_area",
     #"land_CaCO3_dissolution_rate", # subaereal erosion
     "continental_CaCO3_deposition_rate", # when flooded
     "land_sediment_deposition_rate",
+    "land_Q_runoff_field",
+    "land_sediment_weathering_index",
     "seafloor_sediment_deposition_rate",
     "global_sediment_deposition_rate",
     "world_grid_sediment_change",
@@ -179,8 +181,8 @@ deleted_plateID = 8
 sediment_type_names = ["Clay","CaCO3","CaO"]
 clay_sediment = 1; CaCO3_sediment = 2; CaO_sediment = 3
 n_sediment_types = length(sediment_type_names)
-initial_sediment_fractions = [ 0.8,0.,0.2 ]
-orogenic_sediment_source_fractions = [ 0.8,0.,0.2 ]
+initial_sediment_fractions = [ 0.85,0.,0.15 ] # present-day sed avg: Holland
+orogenic_sediment_source_fractions = [ 0.8,0.,0.2 ] # a bit higher for fresh clay?
 initial_land_sediment_thickness = 1.; initial_ocean_sediment_thickness = 1.
 
 # Time 
@@ -212,7 +214,7 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "monday"
+output_tag = "thursday"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -229,9 +231,6 @@ continents_directory = output_directory * "/continents"
 charts_directory = output_directory * "/charts"
 code_backup_directory = output_directory * "/code_bak"
 scotese_data_directory = code_base_directory * "/data/scotese_elevation_files"
-animation_directories = ["elevation","pct_CaCO3","pct_CaO",
-    "crust_age","crust_thickness","crust_thickening_rate","sed_thickness","sed_rate",
-    "sed_thickness_age","scotese_elevation"]
 animation_n_step = 1
 animation_initial_age = earliesttime; animation_final_age = 0
 save_plate_transplants_image_number = 0
@@ -302,6 +301,21 @@ orogenic_erosion_tau_apparent *= 10.
 orogenic_uplift_parameter /= 1.5
 #subduction_orogeny_smooth_coeff = 0.
 
+runoff_tropical_max_rate = 1. # m / yr
+runoff_tropical_max_width = 12.
+runoff_east_coast_penetration_scale = 3.e6
+runoff_subpolar_max_rate = 0.75
+runoff_subpolar_max_lat = 45.
+runoff_subpolar_max_width = 7.5
+runoff_west_coast_penetration_scale = 3.e6
+minimum_runoff = 1.
+runoff_smoothing = 100.
+
+
+exposed_basement_CO2uptake_coeff = 0.25 # Suchet 2003 combined shield,basalt,acid volc
+sediment_CaCO3_CO2uptake_coeff = 1.6 
+sediment_CaO_CO2uptake_coeff = 0.6
+
 
 function create_orogenies()
     orogenic_events = Dict()
@@ -324,7 +338,7 @@ function create_orogenies()
     orogenic_events["Indo Sinean"] =
         create_orogenic_event("indo_sinean",200.,180.,0.5)
     orogenic_events["Laramide"] =
-        create_orogenic_event("laramide",400.,0.,0.5)
+        create_orogenic_event("laramide",400.,0.,0.3)
     orogenic_events["Cimmerian"] =
         create_orogenic_event("cimmerian",180.,150.,1.)
     orogenic_events["Mongol Okhotsk"] =
@@ -341,7 +355,7 @@ function create_orogenies()
 end
 
 if enable_aolean_transport
-    aolean_erosion_rate_constant = 1. / 2000. # Myr
+    aolean_erosion_rate_constant = 1.e-3 # Myr
 else
     aolean_erosion_rate_constant = 0.
 end

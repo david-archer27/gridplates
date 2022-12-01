@@ -32,7 +32,7 @@ function run_and_plot_simulation()
     run_timeseries()
     create_timeseries_charts()
     animate_all()
-    create_output_html_directory( )
+    create_html_directory( )
 end
 function run_and_plot_orogeny_simulation()
     global enable_geomorph = false
