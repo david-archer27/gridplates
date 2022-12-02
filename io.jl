@@ -256,7 +256,11 @@ function create_html_directory( )
     out_filename = html_directory * "/index.html"
     in_file = open(in_filename)
     out_file = open(out_filename,"w")
-    println(out_file,"<HTML><HEAD><TITLE>GridPlates</TITLE></HEAD><body><table><tr>")
+    println(out_file,"<HTML><HEAD><TITLE>GridPlates</TITLE></HEAD><body>")
+    println(out_file,"Gridplates source code and description ")
+    println(out_file,"<a href=\"https://github.com/david-archer27/gridplates/\">here</a></p>")
+    println(out_file,"<table><tr>")
+    println(out_file,"<td>Animations (click to run)</td></tr><tr>")
     cd( animation_directory )
     for file in readdir()
         if file[end-3:end] == ".mp4"
@@ -268,7 +272,7 @@ function create_html_directory( )
             println(out_file, "</a></p></td>" )  
         end
     end
-    println(out_file, "</tr><tr>")
+    println(out_file, "</tr><tr><td>Charts</td></tr><tr>")
 
     cd( charts_directory )
     for file in readdir()
@@ -396,6 +400,7 @@ function plot_CaO_weathering_rate()
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"CaO Weathering Flux, m/Myr")
     return scene
@@ -405,6 +410,7 @@ function plot_sediment_thickness()
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"Sediment Thickness") # L(0:2km)/O(0:2km)")
     return scene
@@ -456,6 +462,7 @@ function plot_weathering_rate( )
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"CaO weathering rate, m / Myr")
     return scene
@@ -546,7 +553,7 @@ function animate_sed_thickness_age()
         if image_file_name in starting_file_list
             println( "already done ", age," ", image_file_name )
         else
-            println( "creating ", age, " ", directory * "/" * image_file_name )
+            println( "creating ", age, " ", image_file_name )
             global world = read_world( age )
             plot_sediment_thickness_age( image_file_name )
         end
@@ -554,7 +561,10 @@ function animate_sed_thickness_age()
     mp4_file = "../sed_thickness_age." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cp( "img.001.png", "../" * plot_type * "." * output_tag * ".png", force=true )
+    rm( plot_type, force=true )
+
     cd( code_base_directory )
 end
 function animate_scotese_elevation( )
@@ -578,7 +588,7 @@ function animate_scotese_elevation( )
         if image_file_name in starting_file_list
             println( "already done ", age," ", image_file_name )
         else
-            println( "creating ", age, " ", directory * "/" * image_file_name )
+            println( "creating ", age, " ", image_file_name )
             global world = read_world( age )
             scotese_elevation,scotese_age = nearest_scotese_elevation()
             scene = plot_two_fields(world.freeboard,scotese_elevation,-4000,4000,"freeboard")
@@ -600,7 +610,9 @@ function animate_scotese_elevation( )
     mp4_file = "../scotese_elevation." * output_tag * ".mp4"
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
-    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p ../$mp4_file`)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cp( "img.001.png", "../" * plot_type * "." * output_tag * ".png", force=true )
+    rm( plot_type, force=true )
     cd( code_base_directory )
 end
 
@@ -612,9 +624,12 @@ function animate_all( )
     animate( plot_CaO_weathering_rate, "CaO_weathering_rate" )
     animate( plot_sediment_thickness, "sediment_thickness" )
     animate( plot_sedimentation_rate, "sedimentation_rate" )
+end
+function animate_all2()
     animate( plot_crust_age, "crust_age" )
     animate( plot_crust_thickness, "crust_thickness" )
     animate( plot_crust_thickening_rate, "crust_thickening_rate" )
+    animate( plot_runoff, "runoff")
 
     animate_sed_thickness_age()
     animate_scotese_elevation( )

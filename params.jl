@@ -214,7 +214,7 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "thursday"
+output_tag = "thursday_night"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -304,11 +304,11 @@ orogenic_uplift_parameter /= 1.5
 runoff_tropical_max_rate = 1. # m / yr
 runoff_tropical_max_width = 12.
 runoff_east_coast_penetration_scale = 3.e6
-runoff_subpolar_max_rate = 0.75
+runoff_subpolar_max_rate = 1.5
 runoff_subpolar_max_lat = 45.
 runoff_subpolar_max_width = 7.5
 runoff_west_coast_penetration_scale = 3.e6
-minimum_runoff = 1.
+minimum_runoff = 0.1
 runoff_smoothing = 100.
 
 

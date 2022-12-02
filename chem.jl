@@ -362,7 +362,7 @@ function subaereal_sediment_dissolution( runoff_map )
                         world.sediment_surface_fractions[ix,iy,CaO_sediment] *
                         sediment_CaO_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s
                         56. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
@@ -370,7 +370,7 @@ function subaereal_sediment_dissolution( runoff_map )
                         world.sediment_surface_fractions[ix,iy,CaCO3_sediment] *
                         sediment_CaCO3_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s
                         100. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
