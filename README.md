@@ -21,6 +21,8 @@ There is currently some bug in the CaCO3 budget.
 
 A "CaO" fraction of sediment (alongside unreactive "clays" and CaCO3) is intended to represent the CO2-consuming weathering flux as fresh clays weather.  Continental dissolution fluxes of both CaCO3 and CaO are based on a rudimentary runoff field, and observed (simplified) runoff / dissolution flux relationships.  Ultimately it should be possible to constrain an atmospheric CO2 parameter based on the constraint that the weathering of exposed bedrock plus clay "CaO" must provide enough Ca to convert a CO2 degassing flux to the atmoshere into CaCO3. 
 
+The runoff applied to the weathering parameterization is an eyeball fit to the results of Baum et al. 2022.  A comparison of the fit to the original is shown as an animation output.  The fraction denuded is compared with the estimation from Holland's book that igneous and metamorphic comprise 25% of the Earth's surface. The CaO weathering fluxes chart shows the relative fluxes from hard rock vs. sediments, compared with the results of BLAG table 1 that 2/3 of "CaO" or calcium silicate weathering is primary rather than from clays.  Maps of sediment distribution are compared with present-day as one of the charts also; currently the model is still somewhat low.  Finally, the elevations are compared with the Scotese reconstruction as an animation of maps, and a time series plot of the mean elevation in a chart.  
+
 The file main.jl contains the master plan and major operations, including running a time series, creating plots and animations from the simulation, and creating an html directory with copies of all the files.  The model can be invoked at a Julia command line as 
 
 include("main.jl")
@@ -31,7 +33,9 @@ Parameters tunable and otherwise are kept in params.jl .  Here you control what 
 
 The world state is saved every time step for diagnostics and graphics.  Plates files are saved periodically for use in restarting a simulation.  There has to be a separate file for each plate to avoid a 2 GB restriction in the BSON format, and you can't save the plates every step or they will eat your computer.  
 
-The graphics are based on Makie and Plots, and can be used interactively at the command line as well as for making the saved output files. Makie is beautiful but sometimes has perspective problems or other inexplicible bugs.  On my apple M1 I have to use v0.4.7 ; more recent versions don't work.  It is worth using multiple cores by setting that preference in VSC or invoking the julia executable using --threads=8 (or however many).  
+The graphics are based on Makie and Plots, and can be used interactively at the command line as well as for making the saved output files. Makie is beautiful but sometimes has perspective problems or other inexplicible bugs.  On my apple M1 I have to use v0.4.7 ; more recent versions don't work.  Also Julia freezes at some point in making animations.  Hence two routines, animate_until_you_almost_puke(), which should be followed by restarting Julia, then doing animate_the_rest().
+
+It is worth using multiple cores by setting that preference in VSC or invoking the julia executable using --threads=8 (or however many).  
 
 
 

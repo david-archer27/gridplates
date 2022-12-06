@@ -283,7 +283,7 @@ function generate_runoff_map()
             end
         end
     end
-    return runoff_map
+    return runoff_map # mm/sec
 
 #=    maritime_boost = fill(0.,nx,ny)
     runoff_map = fill(0.,nx,ny) 
@@ -359,7 +359,8 @@ function subaereal_sediment_dissolution( runoff_map )
                 end
                 if world.geomorphology[ix,iy] == sedimented_land
                     land_sediment_dissolution_rates[ix,iy,CaO_sediment] = 
-                        world.sediment_surface_fractions[ix,iy,CaO_sediment] *
+                        world.sediment_surface_fractions[ix,iy,CaO_sediment] /
+                        initial_sediment_fractions[CaO_sediment] * 
                         sediment_CaO_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
                         runoff_map[ix,iy] * 1.E-3 * # mol / km2 s

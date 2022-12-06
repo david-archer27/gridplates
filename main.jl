@@ -52,7 +52,7 @@ function run_timeseries()
         step_everything( )
         flush( log_IO )
         save_world()
-        time_interval = main_time_step * 10
+        time_interval = 250 # main_time_step * 10
         if floor(world.age/time_interval) == world.age/time_interval && 
             world.age >= time_interval
             save_plates()
