@@ -1178,12 +1178,39 @@ function calculate_velocity_field()
 end
 
 scotese_elevation_plot_ages = [535,530,525,520,515,510,505,500,495,490,485,480,
-    475,470,465,460,455,450,445,440,435,430,425,420,415,410,405,400,395,390.5,
-    385.2,380,375,370,365,355,350,345,340,335,330,325,320,315,310,305,300,295,
+    475,470,465,460,455,450,445,440,435,430,425,420,415,410,405,400,395, # 390.5,
+    #385.2,
+    380,375,370,365,355,350,345,340,335,330,325,320,315,310,305,300,295,
     290,285,280,275,270,265,260,255,245,240,235,230,225,220,215,210,205,200,
     195,190,185,180,175,170,165,160,155,150,145,140,135,130,125,120,115,110,
     100,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,15,10,5,0]
-#using NetCDF
+
+function scotese_mean_elevation_timeseries()
+    mean_areas = Float32[]
+    cd( scotese_data_directory )
+    for scotese_age in scotese_elevation_plot_ages
+        stringage = string(Int(ceil(scotese_age)))
+        filename = "scotese." * stringage * "Ma.bson"
+        println("reading ", filename)
+        BSON.@load filename field
+        sum_elevation = 0.
+        sum_area = 0.
+        for ix in 1:nx
+            for iy in 1:ny
+                if field[ix,iy] > 0.
+                    sum_elevation += field[ix,iy] * areabox[iy]
+                    sum_area += areabox[iy]
+                end
+            end
+        end
+        mean_elevation = sum_elevation / sum_area
+        println("reading ", filename, " ", mean_elevation)
+        push!(mean_areas,mean_elevation)
+    end
+    return mean_areas
+end
+
+    
 function nearest_scotese_elevation()
     index = search_sorted_nearest(scotese_elevation_plot_ages,world.age)
     scotese_age = scotese_elevation_plot_ages[index]

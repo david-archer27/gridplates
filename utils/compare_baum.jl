@@ -232,7 +232,10 @@ function plot_all()
             landfrac = fill(0.,96,48)
             landfrac[:,:] = replace( ds["landfrac"][:,:], missing => 0. )
             qrunoff = fill(0.,96,48)
-            qrunoff[:,:] = replace( ds["QRUNOFF"][:,:], missing => 0. ) .* 1.e6
+            qrunoff[:,:] = replace( ds["QRUNOFF"][:,:], missing => 0. ) .* # mm/sec 
+                1.e-3 .* # m / sec
+                1.e6 .* # m3 / km2 sec 
+                1.e3 # l / km2 sec
             lats = fill(0.,48)
             lats[:] = ds["lat"][:]
             lons = fill(0.,96)
@@ -241,7 +244,6 @@ function plot_all()
             cmap = :lightrainbow # Reverse(:lightrainbow)
             minval = 0.
             maxval = 8.
-
 
             q_transect, east_coast_rainfall_penetration, west_coast_rainfall_penetration =
                 lores_generate_zonal_met_transects( )
@@ -263,8 +265,8 @@ function plot_all()
             Makie.heatmap!(scene,lons,lats .- 190.,my_qrunoff,colormap=cmap,colorrange=(minval,maxval))
             Makie.contour!(scene,lons,lats .- 190.,landfrac,colormap=cmap,colorrange=(minval,maxval))
             text!(scene,results_dir, position = (-180,95),textsize=15)
-            text!(scene,"Comparison with Baum et al 2022",position = ( -90, 110 ), textsize=25)
-            text!(scene,"Fit / Obs = " * fraction_string, position = ( -20, -320), textsize=15)
+            text!(scene,"Runoff comparison with Baum et al 2022",position = ( -180, 110 ), textsize=25)
+            text!(scene,"Gridplates fit / Baum = " * fraction_string, position = ( -20, -320), textsize=15)
             Makie.save( image_file_name, scene )
         end
     end
