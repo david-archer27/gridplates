@@ -204,7 +204,8 @@ geo_interval_names = [ "Cambrian", "Ordovician", "Silurian", "Devonian",
     "Paleocene","Eocene","Oligocene","Miocene","Pliocene","Pleistocene"]
 sealevel_timepoints = [550.,500.,450.,250., 75.,0.]
 sealevel_values =     [  0.,  0.,200.,  0.,250.,0.]
-sealevel_base = - 4714.7
+sealevel_base = - 4714.7 - 856. + # isostatic drawdown from 2 km sediment
+    500. # mean elevation we want of crust with 2 km of sediment
 atmCO2_timepoints = [550.,0.]
 atmCO2_values = [400.,400.]
 atmCO2_base = 400.
@@ -214,7 +215,7 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "tuesday"
+output_tag = "thursday"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -299,10 +300,13 @@ land_base_diffcoeff = max_uplift_rate_target *
     orogenic_area_width * orogenic_area_fraction_target * 
     orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 1.0
-orogenic_erosion_tau_apparent *= 45.
-orogenic_uplift_parameter *= 2.
+land_base_diffcoeff *= 0.5 # 1.0
+orogenic_erosion_tau_apparent *= 5.
+orogenic_uplift_parameter *= 1.5
 #subduction_orogeny_smooth_coeff = 0.
+
+specified_ocean_CaCO3_deposition_rate = 1.e15
+cap_carbonate_max_thickness = 30.
 
 runoff_tropical_max_rate = 1. # m / yr
 runoff_tropical_max_width = 12.
@@ -341,8 +345,8 @@ function create_orogenies()
     orogenic_events["Indo Sinean"] =
         create_orogenic_event("indo_sinean",200.,180.,0.5)
     orogenic_events["Laramide"] =
-        create_orogenic_event("laramide",400.,0.,0.2)
-    orogenic_events["aolean_deposition_fraction_flux"] =
+        create_orogenic_event("laramide",400.,0.,0.1)
+    orogenic_events["Andean"] =
         create_orogenic_event("andean",400.,0.,0.5)
     orogenic_events["Cimmerian"] =
         create_orogenic_event("cimmerian",180.,150.,1.)

@@ -740,7 +740,7 @@ function step_geomorph(  ) # requires previous run with tectonics to fill world 
         continental_CaO_dissolution_rate,
      ] )
 
-    ocean_CaCO3_deposition_rate = total_Ca_sources 
+    ocean_CaCO3_deposition_rate = specified_ocean_CaCO3_deposition_rate 
     #global_CaCO3_net_burial_flux # m3 / Myr
     #if enable_CaCO3_land_diss_ocean_repcp
     #    ocean_CaCO3_deposition_rate += land_dissolved_Ca_prod_rate

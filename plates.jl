@@ -380,20 +380,21 @@ function initial_mask_plate!(plate)
                 if world.crust_type[iworld,jworld] == ocean_crust
                     plate.crust_density[iplate,jplate] = rho_ocean_crust
                     plate.geomorphology[iplate,jplate] = pelagic_seafloor
-                    plate.sediment_thickness[iplate,jplate] = initial_ocean_sediment_thickness
-                    plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
-                    plate.sediment_layer_thickness[iplate,jplate,1] = initial_ocean_sediment_thickness
-                    plate.sediment_surface_fractions[iplate,jplate,:] .= 
-                        initial_sediment_fractions[:]
-                    plate.sediment_layer_fractions[iplate,jplate,:,1:end] .= 0.
-                    plate.sediment_layer_fractions[iplate,jplate,:,1] .= 
-                        initial_sediment_fractions[:]
+                    plate.sediment_thickness[iplate,jplate] = 
+                        world.sediment_thickness[iworld,jworld]
+                    plate.sediment_layer_thickness[iplate,jplate,:] = 
+                        world.sediment_layer_thickness[iworld,jworld,:]
+                    plate.sediment_surface_fractions[iplate,jplate,:] = 
+                        world.sediment_surface_fractions[iworld,jworld,:]
+                    plate.sediment_layer_fractions[iplate,jplate,:,:] = 
+                        world.sediment_layer_fractions[iworld,jworld,:,:]
                 else # must be a continent
                     plate.crust_density[iplate,jplate] = rho_continent_crust
                     plate.geomorphology[iplate,jplate] = sedimented_land
-                    plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
+                    plate.sediment_thickness[iplate,jplate] = 
+                        world.sediment_thickness[iworld,jworld]
                     plate.sediment_surface_fractions[iplate,jplate,:] .=  
-                        initial_sediment_fractions[:]
+                        world.sediment_surface_fractions[iworld,jworld,:]
                 end
             else # world.plateID[iworld,jworld] != plate.plateID
                 delete_plate_point!(plate,iplate,jplate)

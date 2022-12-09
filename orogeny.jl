@@ -19,19 +19,21 @@ function orogeny( subduction_footprint )
     end
     #orogeny_footprint .*= get_continent_mask()
     #set_diag("continent_orogenic_uplift_rate",orogeny_footprint)
-    subduction_orogeny = fill(0.,nx,ny)
-    if enable_subduction_orogeny
-        subduction_orogeny = get_subduction_orogeny( subduction_footprint )
-    end
+    #subduction_orogeny = fill(0.,nx,ny)
+    #if enable_subduction_orogeny
+    #    subduction_orogeny = get_subduction_orogeny( subduction_footprint )
+    #end
     #smooth_world!(subduction_orogeny,subduction_orogeny_smooth_coeff)
-    #=for ix in 1:nx
+    for ix in 1:nx
         for iy in 1:ny
-            if orogenic_uplift_rates[ix,iy,1] > 0.
-                subduction_orogeny[ix,iy] -= orogenic_uplift_rates[ix,iy,1]
+            if world.crust_type[ix,iy] == continent_crust 
+                orogenic_uplift_rates[ix,iy,1] -= ( 
+                    world.crust_thickness[ix,iy] - continent_crust_h0 ) /
+                    orogenic_erosion_tau_apparent
             end
         end
-    end=#
-    orogenic_uplift_rates[:,:,2] .= subduction_orogeny
+    end
+    #orogenic_uplift_rates[:,:,2] .= subduction_orogeny
     orogenic_uplift_rates[:,:,0] = orogenic_uplift_rates[:,:,1] .+
         orogenic_uplift_rates[:,:,2]
     smooth_world_fields!( orogenic_uplift_rates, orogeny_smooth_coeff )

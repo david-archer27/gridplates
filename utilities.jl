@@ -125,12 +125,27 @@ function initialize_plates()
 end
 function create_everything( age )
     global world = create_world( age )
-    # sets world.geomorphology
+
+    isostacy()
+    new_sediment_thickness, new_sediment_surface_fractions = 
+        setup_cap_carbonates()
+    world.sediment_thickness[:,:] = new_sediment_thickness[:,:]
+    world.sediment_surface_fractions[:,:,:] = new_sediment_surface_fractions[:,:,:]
+
     global plates = create_empty_plates( )
     initialize_plates( )
-    # remask_plates()
+    #remask_plates()
 
     fill_world_from_plates( ) 
+
+    #=isostacy()
+    new_sediment_thickness, new_sediment_surface_fractions = 
+        setup_cap_carbonates()
+    world.sediment_thickness[:,:] = new_sediment_thickness
+    world.sediment_surface_fractions[:,:,:] = new_sediment_surface_fractions
+
+    apply_geomorphology_changes_to_plates()=#
+
     println("initial condition at ", age)
     # leaves world.geomorphology, world.geomorphology_changes alone
 end
@@ -190,10 +205,10 @@ function apply_land_sediment_fluxes( land_sediment_fraction_deposition_rate_fiel
                     land_sediment_fraction_deposition_rate_fields[ix,iy,i_sedtype] * 
                     main_time_step
                 if new_sediment_thickness[ix,iy] < 0.
-                    println("negative thickness ",[ix,iy,
-                        world.sediment_thickness[ix,iy], 
-                        new_sediment_thickness[ix,iy]])
-                    new_sediment_thickness[ix,iy] = 0
+                    #println("negative thickness ",[ix,iy,
+                    #    world.sediment_thickness[ix,iy], 
+                    #    new_sediment_thickness[ix,iy]])
+                    new_sediment_thickness[ix,iy] = 0.
                 end
             end
         end

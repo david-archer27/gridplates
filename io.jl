@@ -252,31 +252,33 @@ function create_html_directory( )
         mkdir( html_directory  )
         println( "creating ", html_directory  )
     end
+    cp( code_base_directory * "/README.md", html_directory * "/README.md", force=true)
     in_filename = utils_directory * "/index_template.html"
     out_filename = html_directory * "/index.html"
     #in_file = open(in_filename)
     out_file = open(out_filename,"w")
     println(out_file,"<HTML><HEAD><TITLE>GridPlates</TITLE></HEAD><body>")
     println(out_file,"<h1>Gridplates global sediment circulation model</h1>")
-    println(out_file, "source code and description ")
-    println(out_file,"<a href=\"https://github.com/david-archer27/gridplates/\">here</a></p>")
+    println(out_file, "Source code ")
+    println(out_file,"<a href=\"https://github.com/david-archer27/gridplates/\">here</a>, ")
+    println(out_file,"brief model description <a href=\"README.md\">here</a>.")
     println(out_file,"<table><tr>")
     println(out_file,"<td><h1>Animations</h1> (click to play)</td></tr><tr>")
-
+#=
     cd( data_directory )
     cp( "baum_compare_runoff.mp4", html_directory * "/baum_compare_runoff.mp4", force=true )
     cp( "baum_compare_runoff.png", html_directory * "/baum_compare_runoff.png", force=true )
     println(out_file,"<td><a href=\"baum_compare_runoff.mp4\">")
     println(out_file,"<img src=\"baum_compare_runoff.png\" width=\"500\"></a></p></td>")
-
+=#
     cd( animation_directory )
     for file in readdir()
         if file[end-3:end] == ".mp4"
             cp( file, html_directory * "/" * file, force=true )
-            cp( file[1:end-4] * ".png", html_directory * "/" * file[1:end-4], force=true )
+            cp( file[1:end-4] * ".png", html_directory * "/" * file[1:end-4] * ".png", force=true )
             
             println(out_file,"<td><a href=\"" * file * "\">" )
-            println(out_file,"<img src=\"" * file[1:end-4] * "\".png\" width=\"500\">")
+            println(out_file,"<img src=\"" * file[1:end-4] * ".png\" width=\"500\">")
             println(out_file, "</a></p></td>" )  
         end
     end
@@ -350,6 +352,7 @@ function plot_pct_CaCO3()
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"%CaCO3")
     cont_depo = volume_field(
@@ -541,6 +544,21 @@ function plot_sedimentation_rate()
     plot_add_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"Sedimentation Rate, m/Myr") # L(0:2km)/O(0:2km)")
+    return scene
+end
+function plot_CaCO3_sedimentation_rate()
+    sed_rate = get_frac_diag("seafloor_sediment_fraction_deposition_rate",CaCO3_sediment) .+
+        get_diag("continental_CaCO3_deposition_rate") .-
+        get_frac_diag("land_sediment_fraction_dissolution_rate",CaCO3_sediment)
+    sed_rate *= 1000.
+    scene = plot_field(sed_rate,0.,1000.) # plot_sediment_thickness()
+    plot_add_plate_boundaries!(scene)
+    plot_add_orogenies!(scene)
+    plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
+    #plot_add_sediment_thickness_contours!(scene)
+    plot_add_timestamp!(scene,world.age,-180,-105)
+    plot_add_title!(scene,"CaCO3 Sedimentation Rate, mm/Myr") # L(0:2km)/O(0:2km)")
     return scene
 end
 function plot_crust_age( )
@@ -763,6 +781,7 @@ function animate_the_rest()
     #animate( plot_crust_thickness, "crust_thickness" )
     animate( plot_crust_thickening_rate, "crust_thickening_rate" )
     animate( plot_runoff, "runoff")
+    animate( plot_CaCO3_sedimentation_rate, "CaCO3_sedimentation_rate")
 
     animate_sed_thickness_age()
     animate_scotese_elevation( )
@@ -795,6 +814,7 @@ function create_timeseries_charts(  )
     step_changes = fill( 0., n_sediment_types, n_time_points )
     fraction_denuded = fill(0.,n_time_points)
     mean_weathering_index = fill(0.,n_time_points)
+    mean_continental_crust_thickness = fill(0.,n_time_points)
     while age > animation_final_age
         age -= main_time_step
         println(age)
@@ -860,6 +880,8 @@ function create_timeseries_charts(  )
         fraction_denuded[i_time_point] = area_denuded / ( area_denuded + area_covered )
         weathering_index = get_diag("land_sediment_weathering_index")
         mean_weathering_index[i_time_point] = field_mean(weathering_index, is_land())
+        mean_continental_crust_thickness[i_time_point] = field_mean(world.crust_thickness, is_land())
+        
     end
     n_time_points = length(time_points)
 
@@ -1116,6 +1138,31 @@ function create_timeseries_charts(  )
             variable_labels,
             linestyles,linewidths,units_label )
 
+        plot_title = "mean thicknesses"
+        variable_labels = ["land sediment" "ocean sediment" "continental crust - 12"]
+        linestyles = [ :solid :solid ]
+        linewidths = [ :auto :auto ]
+        units_label = "km"
+        n_lines = length(variable_labels)
+        variable_point_array = fill(0.,n_time_points,n_lines) 
+        variable_point_array[:,1] = ( land_inventory_timeseries[clay_sediment,:] + 
+            land_inventory_timeseries[CaCO3_sediment,:] +
+            land_inventory_timeseries[CaO_sediment,:] ) ./
+            area_timeseries[1,:] ./ 1000. # km
+        variable_point_array[:,2] = ( ocean_inventory_timeseries[clay_sediment,:] + 
+            ocean_inventory_timeseries[CaCO3_sediment,:] +
+            ocean_inventory_timeseries[CaO_sediment,:] ) ./
+            area_timeseries[1,:] ./ 1000.
+        variable_point_array[:,3] = mean_continental_crust_thickness .- 12. ./ 1.e3
+        scatter_time_points = [ 0., 0. ]
+        scatter_point_array = [ 2.0, 0.3 ] # BLAG eq 11,12 or table 1: igneous=14,sed Ca-sil=7
+        scatter_labels = ["land sed" "ocean sed"]
+        plot_time_series_present_day_compare( 
+            time_points,variable_point_array,plot_title,
+            variable_labels,
+            linestyles,linewidths,units_label,
+            scatter_time_points,scatter_point_array,scatter_labels )
+
         plot_title = "fraction denuded"
         linestyles = :solid
         linewidths = :auto
@@ -1138,7 +1185,7 @@ function create_timeseries_charts(  )
 
     end
 
-    plot_title = "average thickness"; variable_labels = ["land" "ocean"]
+    #=plot_title = "average thickness"; variable_labels = ["land" "ocean"]
     units_label = "m"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
@@ -1150,7 +1197,7 @@ function create_timeseries_charts(  )
     variable_point_array[:,2] = ocean_thickness
     plot_time_series( time_points,variable_point_array,plot_title,
         variable_labels,
-        linestyles,linewidths,units_label)
+        linestyles,linewidths,units_label)=#
 
     plot_title = "elevation"; variable_labels = ["gridplates mean"] # * 10" "ocean mean" "max"]
     units_label = "m"
@@ -1583,8 +1630,8 @@ end
 function plot_add_seafloor_sediment_thickness_contours!(scene)
     is_ocean = 1. .- gt_mask(world.freeboard,0.)
     seafloor_sediment_thickness = world.sediment_thickness .* is_ocean
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:100:1000,color=:yellow)
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:20:100,color=:white)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:200:1000,color=:yellow)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:50:100,color=:white)
     return scene
 end
 function plot_add_land_sediment_thickness_contours!(scene)

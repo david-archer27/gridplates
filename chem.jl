@@ -155,6 +155,23 @@ function CaCO3_latitude_scale( iy )
     lat_scale = exp( - ( ( lat / CaCO3_deposition_lat_scale )^2 ) )
     return lat_scale
 end
+function setup_cap_carbonates()
+    initial_land_sediment_fraction_deposition_rate_fields = fill(0.,nx,ny,n_sediment_types)
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.freeboard[ix,iy] < 0. && world.freeboard[ix,iy] > -1000.
+                initial_land_sediment_fraction_deposition_rate_fields[ix,iy,CaCO3_sediment] =
+                    cap_carbonate_max_thickness *
+                    CaCO3_latitude_scale(iy) / main_time_step
+            end
+        end
+    end
+    new_sediment_thickness, new_sediment_surface_fractions = 
+        apply_land_sediment_fluxes( initial_land_sediment_fraction_deposition_rate_fields )
+    return new_sediment_thickness, new_sediment_surface_fractions
+end
+
+
 function generate_met_transects()
     q_transect = fill(0.,ny)
     west_coast_rainfall_penetration = fill(0.,ny)
@@ -176,7 +193,7 @@ function generate_met_transects()
         1.e6 # l / km2 s
     return q_transect, east_coast_rainfall_penetration, west_coast_rainfall_penetration
 end
-
+                
 function generate_runoff_map()
 
     west_coast_maritime_boost = fill(0.,nx,ny)
