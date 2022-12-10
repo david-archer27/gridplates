@@ -181,8 +181,8 @@ deleted_plateID = 8
 sediment_type_names = ["Clay","CaCO3","CaO"]
 clay_sediment = 1; CaCO3_sediment = 2; CaO_sediment = 3
 n_sediment_types = length(sediment_type_names)
-initial_sediment_fractions = [ 0.975,0.,0.025 ] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
-orogenic_sediment_source_fractions = [ 0.95,0.,0.05 ] # a bit higher for fresh clay?
+initial_sediment_fractions = [ 0.85,0.,0.15 ] # present-day sed avg: Holland
+orogenic_sediment_source_fractions = [ 0.8,0.,0.2 ] # a bit higher for fresh clay?
 initial_land_sediment_thickness = 1.; initial_ocean_sediment_thickness = 1.
 
 # Time 
@@ -215,14 +215,12 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "thursday"
+output_tag = "thursday_night"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
 continent_input_directory = code_base_directory * "/continents"
 utils_directory = code_base_directory * "/utils"
-data_directory = code_base_directory * "/data"
-
 output_location = code_base_directory[1:findlast("/", code_base_directory )[1]-1]
 output_directory = output_location * "/" * "outfiles." * output_tag
 html_directory = output_location * "/html." * output_tag
@@ -232,7 +230,6 @@ world_directory = output_directory * "/world"
 plate_directory = output_directory * "/plates"
 continents_directory = output_directory * "/continents"
 charts_directory = output_directory * "/charts"
-
 code_backup_directory = output_directory * "/code_bak"
 scotese_data_directory = code_base_directory * "/data/scotese_elevation_files"
 animation_n_step = 1
@@ -300,9 +297,9 @@ land_base_diffcoeff = max_uplift_rate_target *
     orogenic_area_width * orogenic_area_fraction_target * 
     orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 0.5 # 1.0
-orogenic_erosion_tau_apparent *= 5.
-orogenic_uplift_parameter *= 1.5
+land_base_diffcoeff *= 1.3
+orogenic_erosion_tau_apparent *= 10.
+orogenic_uplift_parameter /= 1.5
 #subduction_orogeny_smooth_coeff = 0.
 
 specified_ocean_CaCO3_deposition_rate = 1.e15
@@ -327,44 +324,42 @@ sediment_CaO_CO2uptake_coeff = 0.6
 function create_orogenies()
     orogenic_events = Dict()
     orogenic_events["Pan_African"] =
-        create_orogenic_event("pan_african",650.,550.,0.5)  # africa, south america
+        create_orogenic_event("pan_african",650.,550.,1.)  # africa, south america
     orogenic_events["Avalonian"] =
-        create_orogenic_event("taconian",650.,500.,0.5)
+        create_orogenic_event("taconian",650.,500.,1.)
     orogenic_events["East African"] =
-        create_orogenic_event("e_african",550.,400.,0.25)
+        create_orogenic_event("e_african",550.,400.,0.5)
     orogenic_events["Taconian"] =
         create_orogenic_event("taconian",490.,440.,3.)
     orogenic_events["Calcedonian/Acadian"] =
-        create_orogenic_event("calcedonian",460.,330.,0.5)
+        create_orogenic_event("calcedonian",460.,330.,1.)
     orogenic_events["Borchgrevink"] =
-        create_orogenic_event("borchgrevink",440.,400.,0.5)
+        create_orogenic_event("borchgrevink",440.,400.,1.)
     orogenic_events["Hercynian/Alleghenian/Uralian"] =
-        create_orogenic_event("hercynian",300.,240.,0.25) # = variscan
+        create_orogenic_event("hercynian",300.,240.,0.5) # = variscan
         # changed end from 250 so something would be uplifting at 0 sl 250
     # Amurian (Japan) should be covered by subduction_orogeny
     orogenic_events["Indo Sinean"] =
         create_orogenic_event("indo_sinean",200.,180.,0.5)
     orogenic_events["Laramide"] =
-        create_orogenic_event("laramide",400.,0.,0.1)
-    orogenic_events["Andean"] =
-        create_orogenic_event("andean",400.,0.,0.5)
+        create_orogenic_event("laramide",400.,0.,0.3)
     orogenic_events["Cimmerian"] =
         create_orogenic_event("cimmerian",180.,150.,1.)
     orogenic_events["Mongol Okhotsk"] =
         create_orogenic_event("mongol_okhotsk",140.,130.,1.)
     orogenic_events["Wrangellian"] =
-        create_orogenic_event("wrangellian",110.,80.,0.75)
+        create_orogenic_event("wrangellian",110.,80.,0.5)
     orogenic_events["Verkhoyansk"] =
-        create_orogenic_event("verkhoyansk",100.,70.,0.75)
+        create_orogenic_event("verkhoyansk",100.,70.,0.5)
     orogenic_events["Alpine"] =
-        create_orogenic_event("alpine",50.,0.,0.75)
+        create_orogenic_event("alpine",50.,0.,0.5)
     orogenic_events["Himalayan"] =
-        create_orogenic_event("himalayan",40.,0.,0.75)
+        create_orogenic_event("himalayan",40.,0.,0.5)
     return orogenic_events
 end
 
 if enable_aolean_transport
-    aolean_erosion_rate_constant = 1.e-2 # Myr
+    aolean_erosion_rate_constant = 1.e-3 # Myr
 else
     aolean_erosion_rate_constant = 0.
 end
@@ -373,7 +368,7 @@ end
 land_sediment_dissolution_rate_constants = [0.0,0.01,0.01] # per Myr
 land_sediment_dissolution_2xCO2 = [0.,0.,0.]
 global_CaCO3_net_burial_flux = 1.e15 # today fluxes
-seafloor_base_diffcoeff = 3.e5 # m2 / yr
+seafloor_base_diffcoeff = 6.e4 # m2 / yr
 
 
 # CaCO3 parameters

@@ -255,7 +255,7 @@ function create_html_directory( )
     cp( code_base_directory * "/README.md", html_directory * "/README.md", force=true)
     in_filename = utils_directory * "/index_template.html"
     out_filename = html_directory * "/index.html"
-    #in_file = open(in_filename)
+    ##in_file = open(in_filename)
     out_file = open(out_filename,"w")
     println(out_file,"<HTML><HEAD><TITLE>GridPlates</TITLE></HEAD><body>")
     println(out_file,"<h1>Gridplates global sediment circulation model</h1>")
@@ -263,14 +263,7 @@ function create_html_directory( )
     println(out_file,"<a href=\"https://github.com/david-archer27/gridplates/\">here</a>, ")
     println(out_file,"brief model description <a href=\"README.md\">here</a>.")
     println(out_file,"<table><tr>")
-    println(out_file,"<td><h1>Animations</h1> (click to play)</td></tr><tr>")
-#=
-    cd( data_directory )
-    cp( "baum_compare_runoff.mp4", html_directory * "/baum_compare_runoff.mp4", force=true )
-    cp( "baum_compare_runoff.png", html_directory * "/baum_compare_runoff.png", force=true )
-    println(out_file,"<td><a href=\"baum_compare_runoff.mp4\">")
-    println(out_file,"<img src=\"baum_compare_runoff.png\" width=\"500\"></a></p></td>")
-=#
+    println(out_file,"<td>Animations (click to run)</td></tr><tr>")
     cd( animation_directory )
     for file in readdir()
         if file[end-3:end] == ".mp4"
@@ -282,8 +275,7 @@ function create_html_directory( )
             println(out_file, "</a></p></td>" )  
         end
     end
-
-    println(out_file, "</tr><tr><td><h1>Charts</h1></td></tr><tr>")
+    println(out_file, "</tr><tr><td>Charts</td></tr><tr>")
 
     cd( charts_directory )
     for file in readdir()
@@ -340,7 +332,6 @@ function plot_elevation()
     scene = setup_plot_field()
     scene = plot_field_with_colortab!(scene,world.freeboard,-5000,5000,0,0,"freeboard")
     plot_add_coast_lines!(scene)
-    plot_add_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105) 
     plot_add_title!(scene,"Elevation")
     #plot_field(scaled_thickness,0.,1.)
@@ -355,54 +346,8 @@ function plot_pct_CaCO3()
     plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"%CaCO3")
-    cont_depo = volume_field(
-        get_diag("continental_CaCO3_deposition_rate")) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12   #  E12 mol / yr
-    cont_diss = volume_field(
-        get_frac_diag("land_sediment_fraction_dissolution_rate",
-        CaCO3_sediment)) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12   #  E12 mol / yr
-    coast_depo = volume_field(
-        get_diag("coastal_CaCO3_flux")) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12  #  E12 mol / yr
-    pelagic_depo = volume_field(
-        get_diag("pelagic_CaCO3_deposition_rate")) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    net = cont_depo-cont_diss+coast_depo+pelagic_depo
-    text_out = "CaCO3 deposition: Continental " * my_string(cont_depo) * " - " * my_string(cont_diss) *
-        ", Coastal " * my_string(coast_depo) * ", Pelagic " * my_string(pelagic_depo) *
-        ", Net " * my_string(net )
-    text!( scene, text_out, position = (-60, 110), textsize=20 ) 
-    continental_CaCO3_dissolution_rate = volume_field(
-        get_frac_diag("land_sediment_fraction_dissolution_rate",CaCO3_sediment )) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    continental_CaO_dissolution_rate = volume_field(
-        get_frac_diag("land_sediment_fraction_dissolution_rate",CaO_sediment )) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    land_orogenic_Ca_source_rate = volume_field( 
-        get_diag("land_orogenic_Ca_source_rates") ) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    total_Ca_sources = land_orogenic_Ca_source_rate + 
-        #continental_CaCO3_dissolution_rate + 
-        continental_CaO_dissolution_rate
-    text_out = "Ca sources: hard rocks " * my_string(land_orogenic_Ca_source_rate) *
-        ", clays " * my_string(continental_CaO_dissolution_rate) * 
-        #", CaCO3 " * my_string(continental_CaCO3_dissolution_rate) * 
-        ", total " * my_string(total_Ca_sources)
-    text!( scene, text_out, position = (-60, 100), textsize=20 ) 
     return scene
 end
-function my_string( value )
-    string_output = lpad( value, 4, " " )[1:4]
-    return string_output
-end 
 function plot_pct_CaO_CaCO3_free()
     CaO_CaCO3_free = fill(0.,nx,ny)
     #CaO_calcite_free = fill(0.,nx,ny)
@@ -418,42 +363,12 @@ function plot_pct_CaO_CaCO3_free()
             end
         end
     end    
-    high_value = orogenic_sediment_source_fractions[CaO_sediment] * 100.
-    scene = plot_field(CaO_CaCO3_free.* 100,0.,high_value)
+    scene = plot_field(CaO_CaCO3_free.* 100,0.,20.)
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
-    plot_add_coast_lines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"% CaO (CaCO3-free)")
-    continental_CaO_dissolution_rate = volume_field(
-        get_frac_diag("land_sediment_fraction_dissolution_rate",CaO_sediment )) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    land_orogenic_Ca_source_rate = volume_field( 
-        get_diag("land_orogenic_Ca_source_rates") ) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    land_orogenic_CaO_source_rate = volume_field(
-        get_frac_diag(("land_orogenic_fraction_flux"),CaO_sediment)) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    total_orogenic_CaO_source_rate = volume_field(
-        get_frac_diag(("crust_orogenic_fraction_flux"),CaO_sediment)) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-        total_Ca_sources = land_orogenic_Ca_source_rate + 
-        #continental_CaCO3_dissolution_rate + 
-        continental_CaO_dissolution_rate
-    text_out = "Ca sources: hard rocks " * my_string(land_orogenic_Ca_source_rate) *
-        ", clays " * my_string(continental_CaO_dissolution_rate) * 
-        #", CaCO3 " * my_string(continental_CaCO3_dissolution_rate) * 
-        ", total " * my_string(total_Ca_sources)
-    text!( scene, text_out, position = (-60, 110), textsize=20 ) 
-    tot_Ca_diss = land_orogenic_Ca_source_rate + continental_CaO_dissolution_rate
-    tot_Ca_diss_max = land_orogenic_CaO_source_rate + land_orogenic_Ca_source_rate
-    text_out = "Land CaO weathering efficiency " * my_string( tot_Ca_diss / tot_Ca_diss_max )
-    text!( scene, text_out, position = (-60, 100), textsize=20 ) 
     return scene
 end
 function plot_weathering_index()
@@ -480,34 +395,6 @@ function plot_weathering_index()
     plot_add_continent_outlines!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"CaO depletion relative to unreactive clay")
-    continental_CaO_dissolution_rate = volume_field(
-        get_frac_diag("land_sediment_fraction_dissolution_rate",CaO_sediment )) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    land_orogenic_Ca_source_rate = volume_field( 
-        get_diag("land_orogenic_Ca_source_rates") ) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    land_orogenic_CaO_source_rate = volume_field(
-        get_frac_diag(("land_orogenic_fraction_flux"),CaO_sediment)) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-    total_orogenic_CaO_source_rate = volume_field(
-        get_frac_diag(("crust_orogenic_fraction_flux"),CaO_sediment)) * # m3 / myr
-        rho_sediment / # g / yr 
-        100. / 1.e12 #  E12 mol / yr
-        total_Ca_sources = land_orogenic_Ca_source_rate + 
-        #continental_CaCO3_dissolution_rate + 
-        continental_CaO_dissolution_rate
-    text_out = "Ca sources: hard rocks " * my_string(land_orogenic_Ca_source_rate) *
-        ", clays " * my_string(continental_CaO_dissolution_rate) * 
-        #", CaCO3 " * my_string(continental_CaCO3_dissolution_rate) * 
-        ", total " * my_string(total_Ca_sources)
-    text!( scene, text_out, position = (0, 110), textsize=20 ) 
-    tot_Ca_diss = land_orogenic_Ca_source_rate + continental_CaO_dissolution_rate
-    tot_Ca_diss_max = land_orogenic_CaO_source_rate + land_orogenic_Ca_source_rate
-    text_out = "Land CaO weathering efficiency " * my_string( tot_Ca_diss / tot_Ca_diss_max )
-    text!( scene, text_out, position = (0, 100), textsize=20 ) 
     return scene
 end
 function plot_CaO_weathering_rate()
@@ -518,18 +405,16 @@ function plot_CaO_weathering_rate()
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
-    plot_add_land_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)    #scene = plot_field(world.freeboard,-5000.,5000)
     plot_add_title!(scene,"CaO Weathering Flux, m/Myr")
     return scene
 end
 function plot_sediment_thickness()
-    scene = plot_field(world.sediment_thickness ./ 1000.,0.,1.) # plot_sediment_thickness()
+    scene = plot_field(world.sediment_thickness ./ 1000.,0.,10.) # plot_sediment_thickness()
     plot_add_plate_boundaries!(scene)
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
-    plot_add_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"Sediment Thickness") # L(0:2km)/O(0:2km)")
     return scene
@@ -541,7 +426,6 @@ function plot_sedimentation_rate()
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
-    plot_add_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"Sedimentation Rate, m/Myr") # L(0:2km)/O(0:2km)")
     return scene
@@ -609,7 +493,6 @@ function plot_runoff( )
     plot_add_orogenies!(scene)
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
-    plot_add_land_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene,world.age,-180,-105)
     plot_add_title!(scene,"Runoff")
     return scene
@@ -699,11 +582,8 @@ function animate_sed_thickness_age()
     rm( mp4_file,force=true)
     run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cp( "img.001.png", "../" * plot_type * "." * output_tag * ".png", force=true )
-    for imgfile in readdir()
-        rm( imgfile )
-    end
-    cd( animation_directory )
     rm( plot_type, force=true )
+
     cd( code_base_directory )
 end
 function animate_scotese_elevation( )
@@ -738,12 +618,6 @@ function animate_scotese_elevation( )
             text!(scene,gridplatestimestamp, position = (0,95),textsize=15)
             text!(scene, scotesetimestamp, position = (0,-110),textsize=15)
             #plot_add_plate_boundaries!(scene)
-            plot_add_elevation_contours!(scene)
-            smooth_scotese = scotese_elevation[1:nx,1:ny]
-            smooth_world!(smooth_scotese,1000.)
-            Makie.contour!(scene,xcoords,ycoords .- 200.,smooth_scotese,levels=0:1000:4000,color=:blue)
-            Makie.contour!(scene,xcoords,ycoords .- 200.,smooth_scotese,levels=-5000:1000:-3000,color=:white)
-        
             plot_add_orogenies!(scene)
             #plot_add_continent_outlines!(scene)
             plot_add_coast_lines!(scene)
@@ -757,17 +631,11 @@ function animate_scotese_elevation( )
     rm( mp4_file,force=true)
     run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
     cp( "img.001.png", "../" * plot_type * "." * output_tag * ".png", force=true )
-    for imgfile in readdir()
-        rm( imgfile )
-    end
-    cd( animation_directory )
     rm( plot_type, force=true )
     cd( code_base_directory )
 end
 
-#function animate_first_priority()
-
-function animate_until_you_almost_puke( )
+function animate_all( )
     #animate( plot_elevation, "elevation" )
     animate( plot_pct_CaCO3, "pct_CaCO3" )
     animate( plot_pct_CaO_CaCO3_free, "pct_CaO_CaCO3_free" )
@@ -776,9 +644,9 @@ function animate_until_you_almost_puke( )
     animate( plot_sediment_thickness, "sediment_thickness" )
     animate( plot_sedimentation_rate, "sedimentation_rate" )
 end
-function animate_the_rest()
-    #animate( plot_crust_age, "crust_age" )
-    #animate( plot_crust_thickness, "crust_thickness" )
+function animate_all2()
+    animate( plot_crust_age, "crust_age" )
+    animate( plot_crust_thickness, "crust_thickness" )
     animate( plot_crust_thickening_rate, "crust_thickening_rate" )
     animate( plot_runoff, "runoff")
     animate( plot_CaCO3_sedimentation_rate, "CaCO3_sedimentation_rate")
@@ -906,9 +774,12 @@ function create_timeseries_charts(  )
         variable_point_array[:,7] = variable_point_array[:,6] + # step_changes
             variable_point_array[:,5] - # subduct
             variable_point_array[:,1] # prod
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label )# ,
+            #scatter_point_array,scatter_labels )
 
         summed_variable_point_array = accumulate_values!( variable_point_array )
         plot_title = "cumulative clay fluxes"; variable_labels = ["inventory" "produced" "subducted"]
@@ -920,43 +791,47 @@ function create_timeseries_charts(  )
         variable_point_array[:,1] = land_inventory_timeseries[clay_sediment,:]
         variable_point_array[:,2] = summed_variable_point_array[:,1]
         variable_point_array[:,3] = summed_variable_point_array[:,5]
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label) #,
+            #scatter_point_array,scatter_labels )
     
-        plot_title = "CaCO3 fluxes"; variable_labels = ["Continental" "coastal" "pelagic" "subduct"]
+        plot_title = "CaCO3 fluxes"; variable_labels = ["Continental prod" "coastal prod" "pelagic prod" "land diss" "runoff" "subduct" "change" "bal"]
         linestyles = [ :solid :solid :solid :dash :dash :dash :dash :solid ]
         linewidths = [ :auto :auto :auto :auto :auto :auto :auto 3 ]
         units_label = "m3/Myr"
         n_lines = length(variable_labels)
         variable_point_array = fill(0.,n_time_points,n_lines) 
-        #=CaCO3_prod = diags_timeseries[diag_index(
+        CaCO3_prod = diags_timeseries[diag_index(
             "coastal_CaCO3_flux"),:] .+
             diags_timeseries[diag_index(
-            "pelagic_CaCO3_deposition_rate"),:]=#
+            "pelagic_CaCO3_deposition_rate"),:]
         variable_point_array[:,1] = diags_timeseries[diag_index(
-                "continental_CaCO3_deposition_rate"),:] .-
-            frac_diags_timeseries[frac_diag_index(
-                "land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:]
+            "continental_CaCO3_deposition_rate"),:]
         variable_point_array[:,2] = diags_timeseries[diag_index(
             "coastal_CaCO3_flux"),:]
         variable_point_array[:,3] = diags_timeseries[diag_index(
             "pelagic_CaCO3_deposition_rate"),:]
-        #variable_point_array[:,4] = frac_diags_timeseries[
-        #    frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:]
-        #variable_point_array[:,4] = frac_diags_timeseries[
-        #    frac_diag_index("coastal_sediment_fraction_runoff_flux"),CaCO3_sediment,:]
-        variable_point_array[:,4] = subduction_rates[CaCO3_sediment,:] .* -1.
-        #=variable_point_array[:,7] = step_changes[CaCO3_sediment,:]
+        variable_point_array[:,4] = frac_diags_timeseries[
+            frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:]
+        variable_point_array[:,5] = frac_diags_timeseries[
+            frac_diag_index("coastal_sediment_fraction_runoff_flux"),CaCO3_sediment,:]
+        variable_point_array[:,6] = subduction_rates[CaCO3_sediment,:]
+        variable_point_array[:,7] = step_changes[CaCO3_sediment,:]
         variable_point_array[:,8] = variable_point_array[:,7] + # step_changes
             variable_point_array[:,6] - # subduction_rates
             variable_point_array[:,1] - # continental_CaCO3_deposition_rate
             variable_point_array[:,2] - # coastal_CaCO3_flux
             variable_point_array[:,3] + # pelagic_CaCO3_deposition_rate
-            variable_point_array[:,4] # land_sediment_fraction_dissolution_rate=#
+            variable_point_array[:,4] # land_sediment_fraction_dissolution_rate
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label ) #,
+            #scatter_point_array,scatter_labels )
 
         summed_variable_point_array = accumulate_values!( variable_point_array )
         plot_title = "cumulative CaCO3 fluxes"; variable_labels = ["inventory" "produced" "subducted"]
@@ -968,37 +843,39 @@ function create_timeseries_charts(  )
         n_lines = length(variable_labels)
         variable_point_array = fill(0.,n_time_points,n_lines) 
         variable_point_array[:,1] = land_inventory_timeseries[CaCO3_sediment,:]
-        variable_point_array[:,2] = summed_variable_point_array[:,1] + # net continent
-        summed_variable_point_array[:,2] + # coastal
-        summed_variable_point_array[:,3] # pelagic
-        variable_point_array[:,3] = summed_variable_point_array[:,4]
+        variable_point_array[:,2] = summed_variable_point_array[:,1]
+        variable_point_array[:,3] = summed_variable_point_array[:,5]
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label )#,
+            #scatter_point_array,scatter_labels )
 
-        plot_title = "CaO fluxes"; variable_labels = ["orogenic diss" "orogenic prod" "clay diss" "runoff" "subduct" ]#"change" "bal"]
+        plot_title = "CaO fluxes"; variable_labels = ["orogenic prod" "land diss" "runoff" "subduct" "change" "bal"]
         linestyles = [ :solid :solid :dash :dash :dash :solid ]
         linewidths = [ :auto :auto :auto :auto :auto 3 ]
         units_label = "m3/Myr"
         n_lines = length(variable_labels)
         variable_point_array = fill(0.,n_time_points,n_lines) 
-        variable_point_array[:,1] = diags_timeseries[diag_index(
-            "land_orogenic_Ca_source_rates"),:] # direct orogenic Ca dissolution
-        variable_point_array[:,2] = frac_diags_timeseries[
+        variable_point_array[:,1] = frac_diags_timeseries[
             frac_diag_index("crust_orogenic_fraction_flux"),CaO_sediment,:]
-        variable_point_array[:,3] = frac_diags_timeseries[
+        variable_point_array[:,2] = frac_diags_timeseries[
             frac_diag_index("land_sediment_fraction_dissolution_rate"),CaO_sediment,:]
-        variable_point_array[:,4] = frac_diags_timeseries[
+        variable_point_array[:,3] = frac_diags_timeseries[
             frac_diag_index("coastal_sediment_fraction_runoff_flux"),CaO_sediment,:]
-        variable_point_array[:,5] = -1. .* subduction_rates[CaO_sediment,:]
-        #=variable_point_array[:,5] = step_changes[CaO_sediment,:]
+        variable_point_array[:,4] = subduction_rates[CaO_sediment,:]
+        variable_point_array[:,5] = step_changes[CaO_sediment,:]
         variable_point_array[:,6] = variable_point_array[:,5] + # step_changes
             variable_point_array[:,4] - # subduct
             variable_point_array[:,1] + # crust_orogenic_fraction_flux
-            variable_point_array[:,2] # land_sediment_fraction_dissolution_rate =#
+            variable_point_array[:,2] # land_sediment_fraction_dissolution_rate
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label ) #,
+            #scatter_point_array,scatter_labels )
 
         summed_variable_point_array = accumulate_values!( variable_point_array )
         plot_title = "cumulative CaO fluxes"; variable_labels = ["inventory" "produced" "subducted"]
@@ -1010,8 +887,10 @@ function create_timeseries_charts(  )
         n_lines = length(variable_labels)
         variable_point_array = fill(0.,n_time_points,n_lines) 
         variable_point_array[:,1] = land_inventory_timeseries[CaO_sediment,:]
-        variable_point_array[:,2] = summed_variable_point_array[:,2]
+        variable_point_array[:,2] = summed_variable_point_array[:,1]
         variable_point_array[:,3] = summed_variable_point_array[:,5]
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label)
@@ -1019,7 +898,7 @@ function create_timeseries_charts(  )
         plot_title = "Ca fluxes"
         # ground truth from BLAG
         # 63% from CaCO3, 7% sed CaO, 14% oro CaO, (16% dolomite)
-        variable_labels = ["Orogenic src" "Sed CaO diss src" "Cont CaCO3 net" "Pelagic sink" "Coastal dep sink" "net"]
+        variable_labels = ["Orogenic src" "Sed CaO diss src" "Cont CaCO3 diss src" "Cont CaCO3 pcp sink" "Pelagic sink" "Coastal dep sink" "net"]
         linestyles = [ :solid :solid :solid :dash :dash :dash :solid ]
         linewidths = [ :auto :auto :auto :auto :auto :auto 3 ]
         units_label = "m3 CaCO3 eq / Myr"
@@ -1030,15 +909,18 @@ function create_timeseries_charts(  )
         variable_point_array[:,2] = frac_diags_timeseries[
             frac_diag_index("land_sediment_fraction_dissolution_rate"),CaO_sediment,:]
         variable_point_array[:,3] = frac_diags_timeseries[
-            frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:] -
-            diags_timeseries[diag_index("continental_CaCO3_deposition_rate"),:]  
+            frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:]
         variable_point_array[:,4] = - diags_timeseries[diag_index(
-                "pelagic_CaCO3_deposition_rate"),:]      
+                "continental_CaCO3_deposition_rate"),:]  
         variable_point_array[:,5] = - diags_timeseries[diag_index(
-                "coastal_CaCO3_flux"),:]   
-        for i_var in 1:5   
-            variable_point_array[:,6] += variable_point_array[:,i_var]
+                "pelagic_CaCO3_deposition_rate"),:]      
+        variable_point_array[:,6] = - diags_timeseries[diag_index(
+            "pelagic_CaCO3_deposition_rate"),:]   
+        for i_var in 1:6   
+            variable_point_array[:,7] += variable_point_array[:,i_var]
         end
+        #scatter_point_array = fill(NaN,n_time_points)
+        #scatter_labels = fill("",n_lines)
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
             linestyles,linewidths,units_label)
@@ -1067,14 +949,15 @@ function create_timeseries_charts(  )
         linewidths = :auto
         units_label = "%"
         variable_point_array = fill(0.,n_time_points)   
-        #oro_CaO_prod = frac_diags_timeseries[
-        #    frac_diag_index("crust_orogenic_fraction_flux"),CaO_sediment,:]
-        oro_Ca_src = diags_timeseries[diag_index(
-            "land_orogenic_Ca_source_rates"),:]
+        oro_CaO_prod = frac_diags_timeseries[
+            frac_diag_index("crust_orogenic_fraction_flux"),CaO_sediment,:]
+        variable_point_array[:] = 
+            diags_timeseries[diag_index(
+                "land_orogenic_Ca_source_rates"),:] ./ tot_CaO_diss .* 100.
         variable_point_array = tot_CaO_diss ./ tot_CaO_prod .* 100.
         scatter_time_points = [ 0. ]
-        scatter_point_array = [ 66. ] # BLAG eq 11,12 or table 1: igneous=14,sed Ca-sil=7
-        scatter_labels = ["BLAG table 1"]
+        scatter_point_array = [ 15. ]
+        scatter_labels = ["Holland 78"]
         plot_time_series_present_day_compare( 
             time_points,variable_point_array,plot_title,
             variable_labels,
@@ -1086,37 +969,13 @@ function create_timeseries_charts(  )
         linestyles = :auto
         linewidths = :auto
         units_label = "%"
+        #scatter_point_array = [ 85? ]
+        #scatter_labels = ["Holland 78"]
         plot_time_series( time_points,mean_weathering_index , 
             plot_title,
             variable_labels,
             linestyles,linewidths,units_label)#,
-
-        plot_title = "CO2 fluxes"
-        variable_labels = ["Orogenic weathering" "Sed CaO weathering" "CaCO3 subduction" "deux ex machina degas"]
-        linestyles = [ :dash :dash :solid :solid :dash :dash :solid ]
-        linewidths = [ :auto :auto :auto :auto :auto :auto 3 ]
-        units_label = "m3 CaCO3 eq / Myr"
-        n_lines = length(variable_labels)
-        variable_point_array = fill(0.,n_time_points,n_lines) 
-        variable_point_array[:,1] = - diags_timeseries[diag_index(
-            "land_orogenic_Ca_source_rates"),:]      
-        variable_point_array[:,2] = - frac_diags_timeseries[
-            frac_diag_index("land_sediment_fraction_dissolution_rate"),CaO_sediment,:]
-        variable_point_array[:,3] = subduction_rates[CaCO3_sediment,:]
-        
-        #=frac_diags_timeseries[
-            frac_diag_index("land_sediment_fraction_dissolution_rate"),CaCO3_sediment,:] -
-            diags_timeseries[diag_index("continental_CaCO3_deposition_rate"),:]  
-        variable_point_array[:,4] = - diags_timeseries[diag_index(
-                "pelagic_CaCO3_deposition_rate"),:]      
-        variable_point_array[:,5] = - diags_timeseries[diag_index(
-                "coastal_CaCO3_flux"),:]   =#
-        for i_var in 1:2   
-            variable_point_array[:,4] -= variable_point_array[:,i_var]
-        end
-        plot_time_series( time_points,variable_point_array,plot_title,
-            variable_labels,
-            linestyles,linewidths,units_label)
+            #scatter_time_points,scatter_point_array,scatter_labels )
 
         plot_title = "sediment inventories"
         variable_labels = ["Clay land" "Clay ocean" "Clay tot" "CaCO3 land" "CaCO3 ocean" "CaCO3 tot" "CaO land" "CaO ocean" "CaO tot" ]
@@ -1170,8 +1029,8 @@ function create_timeseries_charts(  )
         variable_point_array = fill(0.,n_time_points) 
         variable_point_array = fraction_denuded .* 100.
         scatter_time_points =  [0.] 
-        scatter_point_array =  [25.] # , 35.
-        scatter_labels = "Igneous and metamorphic (Holland 1978)" #  "Shield, acid volcanic, and basalts (Suchet 2003)"]
+        scatter_point_array =  [35.] 
+        scatter_labels = "??"
         plot_time_series_present_day_compare( 
             time_points,variable_point_array, 
             plot_title,
@@ -1199,16 +1058,12 @@ function create_timeseries_charts(  )
         variable_labels,
         linestyles,linewidths,units_label)=#
 
-    plot_title = "elevation"; variable_labels = ["gridplates mean"] # * 10" "ocean mean" "max"]
+    plot_title = "elevation"; variable_labels = ["land mean * 10" "ocean mean" "max"]
     units_label = "m"
-    #elevation_timeseries[:,1] .*= 10
-    scotese_mean_elevations = scotese_mean_elevation_timeseries()
-    linestyles = [ :solid :solid :solid :dash :dash :dash :solid ]
-    linewidths = [ :auto :auto :auto :auto :auto :auto 3 ]
-    plot_time_series_data_series_compare( time_points,elevation_timeseries[:,1],plot_title,
+    elevation_timeseries[:,1] .*= 10
+    plot_time_series( time_points,variable_point_array,plot_title,
         variable_labels,
-        linestyles,linewidths,units_label,
-        scotese_elevation_plot_ages .* -1, scotese_mean_elevations, "Scotese mean" )
+        linestyles,linewidths,units_label )
 
     plot_title = "uplift rates"; variable_labels = ["continental" "subduction zone"]
     units_label = "m3/Myr"
@@ -1271,27 +1126,6 @@ function plot_time_series_present_day_compare(
     println("saving ", file_label)
     Plots.savefig(file_label)
 end
-function plot_time_series_data_series_compare(
-    time_points,variable_point_array,
-    plot_title,variable_labels,
-    linestyles,linewidths,units_label,
-    scatter_time_points,scatter_point_array, scatter_labels)
-
-    #println(scatter_point_array)
-
-    Plots.plot(time_points,variable_point_array,title=plot_title,
-        label=variable_labels,linestyle=linestyles,
-        linewidth=linewidths)
-    Plots.plot!(scatter_time_points,scatter_point_array,
-        label=scatter_labels)
-
-    Plots.xlabel!("Myr")
-    Plots.ylabel!(units_label)
-    file_label = charts_directory * "/" *
-        replace(plot_title," " => "_") * "." * output_tag * ".png"
-    println("saving ", file_label)
-    Plots.savefig(file_label)
-end
 function plot_add_time_series!(scene,time_points,variable)
     ax = Axis(scene[1, 1])
     lines!(ax,time_points,variable)
@@ -1328,37 +1162,21 @@ function plot_compare_elevations()
 end
 function plot_compare_sedthick()
     sedthick = read_real_csv(code_base_directory * "/data/" * "sedthick.csv")
-    
-    #ratio = fill(0.,nx,ny)
-    totals = [0.,0.]; total_areas = [0.,0.]
+    ratio = fill(0.,nx,ny)
+    totals = [0.,0.]
     for ix in 1:nx
         for iy in 1:ny
             if sedthick[ix,iy] > 0.
-                #ratio[ix,iy] = world.sediment_thickness[ix,iy] / sedthick[ix,iy]
+                ratio[ix,iy] = world.sediment_thickness[ix,iy] / sedthick[ix,iy]
                 totals[1] += sedthick[ix,iy] * areabox[iy]
-                total_areas[1] += areabox[iy]
-            end
-            if world.sediment_thickness[ix,iy] > 0.
                 totals[2] += world.sediment_thickness[ix,iy] * areabox[iy]
-                total_areas[2] += areabox[iy]
             end
         end
     end
-    totals ./= total_areas
-    #scene = plot_field(ratio,0.,2.)
-    seafloor_sediment_thickness = world.sediment_thickness .* lt_mask( world.freeboard,0. )
-    scene = plot_two_fields(seafloor_sediment_thickness,sedthick,0,1000)
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:1000:10000,color=:yellow)
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:100:1000,color=:white)
-
-    smooth_world!( sedthick, 1000. )
- 
-    Makie.contour!(scene,xcoords,ycoords .- 200.,sedthick,levels=0:1000:10000,color=:yellow)
-    Makie.contour!(scene,xcoords,ycoords .- 200.,sedthick,levels=0:100:1000,color=:white)
-
+    scene = plot_field(ratio,0.,2.)
     total_ratio = totals[2] / totals[1]
     output_string = "Gridplates ocean sediment vol / data = " * string(total_ratio)[1:4]
-    text!(scene, output_string, position = (-140,105),textsize=25)
+    text!(scene, output_string, position = (-80,105),textsize=25)
     file_label = charts_directory * "/" * 
         "sedthick_compare." * output_tag * ".png"
     println("saving ", file_label)
@@ -1515,7 +1333,7 @@ function plot_field_with_colortab!(scene,field,minval,maxval,xoffset,yoffset,sty
         labelval = Int(floor(minval + (ilabel-1) * colorinterval))
         labelval = string(labelval)
         labelpos = Int(-95. + (ilabel-1) * 30.)
-        text!(scene,labelval,position=(190 + xoffset,labelpos + yoffset),textsize=20)
+        text!(scene,labelval,position=(190 + xoffset,labelpos + yoffset),textsize=10)
         #println("printing ", labelval)
     end
     #text!(scene,string(Int(floor(maxval))),position=(190,85),textsize=10)
@@ -1551,7 +1369,7 @@ end
 function plot_add_plate_boundaries!(scene)
     for plateID in world.plateIDlist
         maskfield = eq_mask(world.plateID,plateID)
-        Makie.contour!(scene,xcoords,ycoords,maskfield,color=:black)
+        Makie.contour!(scene,xcoords,ycoords,maskfield,color=:white)
     end
     return scene
 end
@@ -1609,12 +1427,12 @@ function plot_add_streamlines!(scene) # sprinkle flowpathlines over map
 end
 function plot_add_coast_lines!(scene)
     landmask = ge_mask(world.freeboard,0.)
-    Makie.contour!(scene,xcoords,ycoords,landmask,color=:blue)
+    Makie.contour!(scene,xcoords,ycoords,landmask,color=:brown)
     return scene
 end
 function plot_add_continent_outlines!(scene)
     continentmask = get_continent_mask()
-    Makie.contour!(scene,xcoords,ycoords,continentmask,color=:grey)
+    Makie.contour!(scene,xcoords,ycoords,continentmask,color=:black)
     return scene
 end
 function plot_add_alt_continent_outlines!(scene)
@@ -1630,15 +1448,15 @@ end
 function plot_add_seafloor_sediment_thickness_contours!(scene)
     is_ocean = 1. .- gt_mask(world.freeboard,0.)
     seafloor_sediment_thickness = world.sediment_thickness .* is_ocean
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:200:1000,color=:yellow)
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:50:100,color=:white)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:20:100,color=:yellow)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:1000:5000,color=:white)
     return scene
 end
 function plot_add_land_sediment_thickness_contours!(scene)
     is_land = gt_mask(world.freeboard,0.)
     seafloor_sediment_thickness = world.sediment_thickness .* is_land
-    #Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:1000:5000,color=:green)
-    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:500:2000,color=:yellow)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:1000:5000,color=:green)
+    Makie.contour!(scene,xcoords,ycoords,seafloor_sediment_thickness,levels=0:200:1000,color=:yellow)
     return scene
 end
 function plot_add_sediment_thickness_contours!(scene)
@@ -1646,13 +1464,6 @@ function plot_add_sediment_thickness_contours!(scene)
     plot_add_sediment_thickness_contours!(scene,0,5,25)
     return scene
 end
-function plot_add_elevation_contours!(scene)
-    #is_land = gt_mask(world.freeboard,0.)
-    Makie.contour!(scene,xcoords,ycoords,world.freeboard,levels=0:500:4000,color=:blue)
-    Makie.contour!(scene,xcoords,ycoords,world.freeboard,levels=-6000:500:-1000,color=:white)
-    return scene
-end
-
 function plot_add_subduction_orogeny!(scene)
     subduction_uplifting = gt_mask(get_diag("subduction_orogenic_uplift_rate"),0.01)
     Makie.contour!(scene,xcoords,ycoords,subduction_uplifting,color=:white)
@@ -1667,11 +1478,11 @@ function plot_add_orogenies!(scene)
     uplift_rate = get_diag("continent_orogenic_uplift_rate")
     Makie.contour!(scene,xcoords,ycoords,uplift_rate,color=:red)
 
-    #subduction_uplifting = gt_mask(get_diag("subduction_orogenic_uplift_rate"),0.01)
-    #Makie.contour!(scene,xcoords,ycoords,subduction_uplifting,color=:green)
+    subduction_uplifting = gt_mask(get_diag("subduction_orogenic_uplift_rate"),0.01)
+    Makie.contour!(scene,xcoords,ycoords,subduction_uplifting,color=:green)
 
     exposed_basement_field = eq_mask(world.geomorphology,exposed_basement)
-    Makie.contour!(scene,xcoords,ycoords,exposed_basement_field,color=:grey)
+    Makie.contour!(scene,xcoords,ycoords,exposed_basement_field,color=:blue)
 
     orogenies = active_orogenic_events()
     text!(scene, orogenies, position = (0,-105),textsize=15)
