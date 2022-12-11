@@ -778,7 +778,7 @@ function animate_until_you_almost_puke( )
 end
 function animate_the_rest()
     #animate( plot_crust_age, "crust_age" )
-    #animate( plot_crust_thickness, "crust_thickness" )
+    animate( plot_crust_thickness, "crust_thickness" )
     animate( plot_crust_thickening_rate, "crust_thickening_rate" )
     animate( plot_runoff, "runoff")
     animate( plot_CaCO3_sedimentation_rate, "CaCO3_sedimentation_rate")
@@ -790,6 +790,9 @@ end
 
 function create_timeseries_charts(  )
     age = earliesttime 
+    create_timeseries_charts( age )
+end
+function create_timeseries_charts( age )
     global world = read_world( age )
     n_time_points = Int( age / main_time_step)
     n_diags = length(world_diag_names)
@@ -814,6 +817,7 @@ function create_timeseries_charts(  )
     step_changes = fill( 0., n_sediment_types, n_time_points )
     fraction_denuded = fill(0.,n_time_points)
     mean_weathering_index = fill(0.,n_time_points)
+    mean_continental_crust_thickness = fill(0.,n_time_points)
     while age > animation_final_age
         age -= main_time_step
         println(age)
@@ -873,12 +877,13 @@ function create_timeseries_charts(  )
         #is_land = gt_mask(world.freeboard,0.)
         elevation_timeseries[i_time_point,1] = field_mean(world.freeboard, is_land())
         elevation_timeseries[i_time_point,2] = field_mean(world.freeboard, (1 .- is_land()))
-        elevation_timeseries[i_time_point,3] = field_max(world.freeboard)
+        elevation_timeseries[i_time_point,3] = min(field_max(world.freeboard),1.e4)
         area_denuded = volume_field(eq_mask(world.geomorphology,exposed_basement))
         area_covered = volume_field(eq_mask(world.geomorphology,sedimented_land) )
         fraction_denuded[i_time_point] = area_denuded / ( area_denuded + area_covered )
         weathering_index = get_diag("land_sediment_weathering_index")
         mean_weathering_index[i_time_point] = field_mean(weathering_index, is_land())
+        mean_continental_crust_thickness[i_time_point] = field_mean(world.crust_thickness, is_land())
     end
     n_time_points = length(time_points)
 
@@ -1115,7 +1120,7 @@ function create_timeseries_charts(  )
             variable_labels,
             linestyles,linewidths,units_label)
 
-        plot_title = "sediment inventories"
+        #=plot_title = "sediment inventories"
         variable_labels = ["Clay land" "Clay ocean" "Clay tot" "CaCO3 land" "CaCO3 ocean" "CaCO3 tot" "CaO land" "CaO ocean" "CaO tot" ]
         linestyles = [ :solid :solid :solid :dash :dash :dash :solid :solid :solid ]
         linewidths = [ :auto :auto 3 :auto :auto 3 :auto :auto 3 ]
@@ -1133,10 +1138,10 @@ function create_timeseries_charts(  )
         variable_point_array[:,9] = variable_point_array[:,7] + variable_point_array[:,8]
         plot_time_series( time_points,variable_point_array,plot_title,
             variable_labels,
-            linestyles,linewidths,units_label )
+            linestyles,linewidths,units_label )=#
 
-        plot_title = "sediment thicknesses"
-        variable_labels = ["land mean" "ocean mean"]
+        plot_title = "mean thicknesses"
+        variable_labels = ["land mean" "ocean mean" "cont crust - 15"]
         linestyles = [ :solid :solid ]
         linewidths = [ :auto :auto ]
         units_label = "km"
@@ -1150,7 +1155,8 @@ function create_timeseries_charts(  )
             ocean_inventory_timeseries[CaCO3_sediment,:] +
             ocean_inventory_timeseries[CaO_sediment,:] ) ./
             area_timeseries[1,:] ./ 1000.
-        scatter_time_points = [ 0. ]
+        variable_point_array[:,3] = mean_continental_crust_thickness ./ 1000. .- 15.
+        scatter_time_points = [ 0.,0. ]
         scatter_point_array = [ 2.0, 0.3 ] # BLAG eq 11,12 or table 1: igneous=14,sed Ca-sil=7
         scatter_labels = ["obs"]
         plot_time_series_present_day_compare( 
@@ -1181,7 +1187,7 @@ function create_timeseries_charts(  )
 
     end
 
-    plot_title = "average thickness"; variable_labels = ["land" "ocean"]
+    #=plot_title = "average thickness"; variable_labels = ["land" "ocean"]
     units_label = "m"
     n_lines = length(variable_labels)
     variable_point_array = fill(0.,n_time_points,n_lines) 
@@ -1193,28 +1199,40 @@ function create_timeseries_charts(  )
     variable_point_array[:,2] = ocean_thickness
     plot_time_series( time_points,variable_point_array,plot_title,
         variable_labels,
-        linestyles,linewidths,units_label)
+        linestyles,linewidths,units_label)=#
 
-    plot_title = "elevation"; variable_labels = ["gridplates mean"] # * 10" "ocean mean" "max"]
+    plot_title = "elevation"
+    variable_labels = ["gridplates land mean" "gridplates ocean mean" "gridplates max" ] # * 10" "ocean mean" "max"]
     units_label = "m"
     #elevation_timeseries[:,1] .*= 10
-    scotese_mean_elevations = scotese_mean_elevation_timeseries()
+    n_lines = length(variable_labels)
+    variable_point_array = fill(0.,n_time_points,n_lines) 
+    variable_point_array[:,1] = elevation_timeseries[:,1]
+    variable_point_array[:,2] = elevation_timeseries[:,2]
+    variable_point_array[:,3] = elevation_timeseries[:,3]
+    data_labels = ["Scotese mean" "Scotese max"]
+    n_data_lines = 2
+    n_data_values = length(scotese_elevation_plot_ages)
+    data_point_array = fill(0.,n_data_values,n_data_lines) 
+    scotese_mean_elevations, scotese_max_elevations = scotese_elevation_timeseries()
+    data_point_array[:,1] = scotese_mean_elevations
+    data_point_array[:,2] = scotese_max_elevations
     linestyles = [ :solid :solid :solid :dash :dash :dash :solid ]
     linewidths = [ :auto :auto :auto :auto :auto :auto 3 ]
-    plot_time_series_data_series_compare( time_points,elevation_timeseries[:,1],plot_title,
+    plot_time_series_data_series_compare( time_points,variable_point_array,plot_title,
         variable_labels,
         linestyles,linewidths,units_label,
-        scotese_elevation_plot_ages .* -1, scotese_mean_elevations, "Scotese mean" )
+        scotese_elevation_plot_ages .* -1.,data_point_array, data_labels )
 
-    plot_title = "uplift rates"; variable_labels = ["continental" "subduction zone"]
+    #=plot_title = "uplift rates"; variable_labels = ["continental"]
     units_label = "m3/Myr"
     variable_point_array[:,1] = diags_timeseries[
         diag_index("continent_orogenic_uplift_rate"),:]
-    variable_point_array[:,2] = diags_timeseries[
-        diag_index("subduction_orogenic_uplift_rate"),:]
+    #variable_point_array[:,2] = diags_timeseries[
+    #    diag_index("subduction_orogenic_uplift_rate"),:]
     plot_time_series( time_points,variable_point_array,plot_title,
         variable_labels,
-        linestyles,linewidths,units_label )
+        linestyles,linewidths,units_label )=#
     
     plot_compare_elevations()
 
@@ -1250,15 +1268,15 @@ function plot_time_series_present_day_compare(
     time_points,variable_point_array,
     plot_title,variable_labels,
     linestyles,linewidths,units_label,
-    scatter_time_points,scatter_point_array, scatter_labels)
+    data_time_points,data_point_array, data_labels)
 
     #println(scatter_point_array)
 
     Plots.plot(time_points,variable_point_array,title=plot_title,
         label=variable_labels,linestyle=linestyles,
         linewidth=linewidths)
-    Plots.scatter!(scatter_time_points,scatter_point_array,
-        label=scatter_labels)
+    Plots.scatter!(data_time_points,data_point_array,
+        label=data_labels)
 
     Plots.xlabel!("Myr")
     Plots.ylabel!(units_label)

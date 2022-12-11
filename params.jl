@@ -215,7 +215,7 @@ atmCO2_base = 400.
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "saturday"
+output_tag = "sunday_morning"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -300,9 +300,9 @@ land_base_diffcoeff = max_uplift_rate_target *
     orogenic_area_width * orogenic_area_fraction_target * 
     orogenic_area_width / ( 2. * mean_elevation_land_target ) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 0.5 # 1.0
-#orogenic_erosion_tau_apparent *= 5.
-orogenic_uplift_parameter *= 1.5
+land_base_diffcoeff *= 0.5
+orogenic_erosion_tau_apparent *= 2. # 1 # 5
+orogenic_uplift_parameter *= 2.0 # 2.5 # 4. # 1.5 # back off because too much sed in ocean, elevation too high
 #subduction_orogeny_smooth_coeff = 0.
 
 specified_ocean_CaCO3_deposition_rate = 1.e15
