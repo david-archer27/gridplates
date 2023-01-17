@@ -612,7 +612,8 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         if n_loops_already > 20
             need_another_loop = false
         end
-    end
+    end # of the denuded gridpoints iterative loop
+
     set_diag("crust_erosion_rate", orogenic_erosion_rate_field)
     set_frac_diag("crust_orogenic_fraction_flux", orogenic_sediment_source_fields)
     set_frac_diag("land_orogenic_fraction_flux", orogenic_boundary_source_fields .* subaereal_mask)
@@ -630,10 +631,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     #println(""); println("Land Sediment Composition Calculation");println("")
 
+
     land_sediment_fraction_deposition_rate_fields =
         land_sediment_fraction_transport(new_elevation_field,
             land_sediment_deposition_rate_field,
             diffusive_mask, sediment_source_fields, submerged_mask)
+
 
     set_frac_diag("land_sediment_fraction_deposition_rate",
         land_sediment_fraction_deposition_rate_fields)
@@ -818,9 +821,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     #=clay_sediment, clay_dep )
     set_frac_diag( "ocean_sediment_fraction_influx",
     CaCO3_sediment, CaCO3_dep )=#
+
+
     println("distributing ocean fluxes")
     accumulating_depositing_fluxes = distribute_ocean_sediment_fluxes(incoming_fluxes)
 
+    
     set_diag("seafloor_sediment_deposition_rate",
         accumulating_depositing_fluxes[:, :, 0])
     for i_sedtype in 1:n_sediment_types

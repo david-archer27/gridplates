@@ -10,7 +10,14 @@ There are many renamings in the reconstrucrtion: changes of plateID number.  Whe
 
 Each time step the plate rotation matrices are updated and plate information is interpolated to the world grid, in grid points where the GPlates plateID field says that a given plateID outcrops.  The model also reads a file containing the locations of continents in the GPlates reconstruction.  
 
-Orogeny is controlled by giving the model global fields of 0, 1's to indicate the present-day footprint of an uplift event, and settings in the code to control the time period of the event as well as scaling its magnitude.  The crust magically thickens and lifts up isostatically at rates specified in create_orogenic_events(), in grid cells which rotate to the present-day locations of the orogenic footprint field.  
+Orogeny is currently controlled by comparison to the elevations from Scotese which have been rotated
+by Chris into their present-day locations, from which they are rotated to match the Merdith 
+reconstruction in gridplates.  Only elevations above 1500 meters are uplifted, which is done by 
+thickening the crust.  
+
+Inputs of large igneous provinces and ophiolites are similarly done in modern-day locations, twisted
+back to their paleo locations at the appropriate times, which are the numbers in the input grid. A 
+crust_composition variable has been added but not yet implemented for weathering.  
 
 Land sediment transport is diffusive with a transport coefficient set in params.jl . Parts of the domain are completely denuded of sediment in the solution of the time step.  These grid cells are found by iteration.  First they are presumed to be sediment-covered at the end of the step.  Then the step is taken.  If a cell's projected sediment thickness at the end of the step is less than zero, then it is excluded from the calculation in a subsequent iteration.  Adjacent cells then go negative, so multiple passes are required.  
 

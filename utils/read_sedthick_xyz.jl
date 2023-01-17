@@ -1,5 +1,5 @@
 function read_sedthick_xyz()
-    f = open( "data/sedthick.xyz")
+    f = open( "laske.sedmap.xyz")
     lines = readlines(f)
     field = fill(0.,nx,ny)
     for line in lines
