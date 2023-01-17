@@ -1,4 +1,154 @@
-function orogeny( subduction_footprint )
+function get_scotese_mountains( )
+    age_string = lpad(Int(ceil(world.age)),3,"0")
+    CS_file_name = code_base_directory * 
+        "/data/scotese_elevation_files_today/scotese_today." *
+        age_string * "Ma.bson"
+    BSON.@load CS_file_name twisted_elevation
+    target_elevation = fill_world_orogeny( twisted_elevation )
+    
+    #target_elevation = rotate_field( twisted_elevation, 
+    #    eq_mask(world.crust_type,continent_crust), cont_ID, cont_start, world.age )
+    #smooth_world!( target_elevation, 1000. )
+    return target_elevation
+end
+function rotate_field_0_to_current_age(field_at_time_0, start_time_field )
+    #continent_crust_past = eq_mask(world.crust_type,continent_crust)
+    field_past = rotate_field_0_to_age( field_at_time_0, start_time_field,
+        world.age, world.continentID )
+    return field_past
+end
+function mask_field_from_start_time_field( start_time_field )
+    mask_field_time_0 = fill(1.,nx,ny)
+    field_past = rotate_field_0_to_current_age(mask_field_time_0, start_time_field)
+    return field_past
+end
+
+function rotate_field_0_to_age( field_at_time_0, start_time_field, age,
+    paleo_rotation_ID_field )
+    # inner core unreliant on world.machinery 
+    field_past = fill(0.,nx,ny)
+    for ixpast in 1:nx
+        for iypast in 1:ny
+            if paleo_rotation_ID_field[ixpast,iypast] > 0
+                rot_ID = paleo_rotation_ID_field[ixpast,iypast]
+                rotation_matrix = resolve_rotation_matrix!( rot_ID, age )
+                ix0, iy0 = nearest_plateij(rotation_matrix, ixpast, iypast)
+                # nearest plate because that is the 0-rotation location 
+                if start_time_field[ix0,iy0] > age 
+                    field_past[ixpast, iypast] = field_at_time_0[ix0, iy0]
+                end
+            end
+        end
+    end
+    #=rotIDlist = find_plateID_list( rot_ids_0 )
+    for rotID in rotIDlist
+        if rotID in rot_ids_list_past
+            #error(rotID)
+            
+            for ixpast in 1:nx # need the world grid at time=age to be complete
+                for iypast in 1:ny
+                    ix0,iy0 = nearest_plateij(rotation_matrix,ixpast,iypast)
+                    # the position on the rotated plate field
+                    # assume zero rotation at time=0, so look for footprint here
+                    if rot_ids_0[ix0,iy0] == rotID && 
+                        continent_crust_past[ixpast,iypast] == 1 &&
+                        start_time_0[ix0,iy0] >= age
+
+                        #error(ixpast," ",iypast)
+                        field_past[ixpast,iypast] = field_0[ix0,iy0]
+                    end
+                end
+            end
+        end
+    end =#
+    return field_past
+end
+function rotate_field_age_to_0(field_at_age, start_time_field, age)
+    rotation_ID_time_0 = read_continentIDs(0.0)
+    # inner core unreliant on world.machinery 
+    field_at_time_0 = fill(0.0, nx, ny)
+    for ix0 in 1:nx
+        for iy0 in 1:ny
+            if rotation_ID_time_0[ix0, iy0] > 0
+                rot_ID = rotation_ID_time_0[ix0, iy0]
+                rotation_matrix = resolve_rotation_matrix!(rot_ID, age)
+                ixpast, iypast = nearest_worldij(rotation_matrix, ix0, iy0)
+                # nearest plate because that is the 0-rotation location 
+                if start_time_field[ix0, iy0] > age
+                    field_at_time_0[ix0, iy0] = field_past[ixpast, iypast]
+                end
+            end
+        end
+    end
+    return field_at_time_0
+end
+function filtered_start_time_field( start_time_field )
+    filtered_start_time_field = fill(0.,nx,ny)
+    for ix in 1:nx
+        for iy in 1:ny
+            if start_time_field[ix,iy] - world.age > 0 &&
+                start_time_field[ix,iy] - world.age <= main_time_step
+
+                filtered_start_time_field[ix,iy] = start_time_field[ix,iy]
+            end
+        end
+    end
+    return filtered_start_time_field
+end
+function get_mafics()
+    filtered_large_igneous_province_start_field =
+        filtered_start_time_field(large_igneous_province_start_field)
+    current_large_igneous_provinces =
+        mask_field_from_start_time_field(filtered_large_igneous_province_start_field)
+    filtered_ophiolite_start_field =
+        filtered_start_time_field(large_igneous_province_start_field)
+    current_ophiolites =
+        mask_field_from_start_time_field(filtered_ophiolite_start_field)
+    for ix in 1:nx
+        for iy in 1:ny
+            if current_large_igneous_provinces[ix, iy] == 1.0 ||
+                current_ophiolites[ix, iy] == 1.0
+
+                world.crust_composition[ix, iy] = mafic_crust
+                world.crust_thickness[ix, iy] +=
+                    (1500.0 - world.freeboard[ix, iy]) /
+                    crust_freeboard_expression
+                world.geomorphology[ix, iy] = exposed_basement
+                # triggers cleanup of sediment in get_denuded_sediment_fluxes()
+            end
+        end
+    end
+end
+#function get_ice_sheets()
+
+function uplift_scotese_mountains_by_crust_thickening( scotese_target_elevation )
+    for ix in 1:nx
+        for iy in 1:ny
+            if scotese_target_elevation[ix, iy] > 1500.0
+                world.crust_thickness[ix,iy] += 
+                    ( scotese_target_elevation[ix, iy] - world.freeboard[ix, iy] ) /
+                    crust_freeboard_expression
+            end
+        end
+    end
+end
+function uplift_scotese_mountains_by_magic( scotese_target_elevation )
+    for ix in 1:nx
+        for iy in 1:ny
+            if scotese_target_elevation[ix,iy] > 1500.
+                world.elevation_offset[ix,iy] += scotese_target_elevation[ix,iy] -
+                    world.freeboard[ix,iy]
+            end
+        end
+    end
+end
+              
+                
+
+
+
+
+function old_orogeny( subduction_footprint )
     orogenic_uplift_rates = fill(0.,nx,ny,0:2) # sum, cont, subd
     # unmasked for land
     world_mask = fill(1,nx,ny)
@@ -43,13 +193,13 @@ function orogeny( subduction_footprint )
 end
 function fill_world_orogeny(footprint) # requires at least create_world(age)
     age = world.age
-    plateIDmap = world.plateID
+    continentIDmap = world.continentID
     world_orogeny = fill(0.,nx,ny)
     for ixworld in 1:nx
         for iyworld in 1:ny
             if world.crust_type[ixworld,iyworld] >= continent_crust
-                plateID = plateIDmap[ixworld,iyworld]
-                mplate = resolve_rotation_matrix!(plateID,age)
+                continentID = continentIDmap[ixworld,iyworld]
+                mplate = resolve_rotation_matrix!(continentID,age)
                 ixplate,iyplate = nearest_plateij(mplate,ixworld,iyworld)
                 # the position on the rotated plate field
                 # assume zero rotation at present-day, so look for footprint here
@@ -532,8 +682,7 @@ function generate_orogenic_erosion_fluxes()
     verbose = false
     #reset_diag("land_orogenic_clay_flux")
     #reset_diag("coastal_orogenic_clay_flux")
-    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
-        is_land() 
+    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement )
     orogenic_clay_flux = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny

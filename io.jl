@@ -52,6 +52,20 @@ function read_flip_csv(filename)
     end
     return arr
 end
+function read_real_flip_csv(filename)
+    f = open(filename)
+    arr = fill(0.0, nx, ny)
+    lines = readlines(f)
+    for (iy, line) in enumerate(lines)
+        iyflip = ny - iy + 1
+        words = split(line, ",")
+        for (ix, word) in enumerate(words)
+            value = parse(Int, word)
+            arr[ix, iyflip] = value
+        end
+    end
+    return arr
+end
 function read_plateIDs()
     return read_plateIDs( world.age )
 end
@@ -1624,6 +1638,11 @@ end
 function plot_add_coast_lines!(scene)
     landmask = ge_mask(world.freeboard,0.)
     Makie.contour!(scene,xcoords,ycoords,landmask,color=:blue)
+    return scene
+end
+function plot_add_altitude_contour!(scene, altitude)
+    landmask = ge_mask(world.freeboard, altitude)
+    Makie.contour!(scene, xcoords, ycoords, landmask, color=:yellow)
     return scene
 end
 function plot_add_continent_outlines!(scene)

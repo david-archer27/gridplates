@@ -336,6 +336,7 @@ function fill_world_from_plates()
                     world.crust_type[iworld,jworld] = ocean_crust
                     world.crust_thickness[iworld,jworld] = ocean_crust_h0
                     world.crust_density[iworld,jworld] = rho_ocean_crust
+                    world.crust_composition[iworld,jworld] = mafic_crust
                     world.geomorphology[iworld,jworld] = pelagic_seafloor
                     world.tectonics[iworld,jworld] = new_ocean_crust
                     world.sediment_thickness[iworld,jworld] = 0.
@@ -349,6 +350,8 @@ function fill_world_from_plates()
                         plate.crust_thickness[iplate,jplate]
                     world.crust_density[iworld,jworld] =
                         plate.crust_density[iplate,jplate]
+                    world.crust_composition[iworld,jworld] =
+                        plate.crust_composition[iplate,jplate]
                     world.geomorphology[iworld,jworld] = 
                         plate.geomorphology[iplate,jplate]
                     if plate.geomorphology[iplate,jplate] == exposed_basement
@@ -379,6 +382,7 @@ function initial_mask_plate!(plate)
                     world.crust_thickness[iworld,jworld]
                 if world.crust_type[iworld,jworld] == ocean_crust
                     plate.crust_density[iplate,jplate] = rho_ocean_crust
+                    plate.crust_composition[iplate,jplate] = mafic_crust
                     plate.geomorphology[iplate,jplate] = pelagic_seafloor
                     plate.sediment_thickness[iplate,jplate] = 
                         world.sediment_thickness[iworld,jworld]
@@ -390,6 +394,7 @@ function initial_mask_plate!(plate)
                         world.sediment_layer_fractions[iworld,jworld,:,:]
                 else # must be a continent
                     plate.crust_density[iplate,jplate] = rho_continent_crust
+                    plate.crust_composition[iplate,jplate] = felsic_crust
                     plate.geomorphology[iplate,jplate] = sedimented_land
                     plate.sediment_thickness[iplate,jplate] = 
                         world.sediment_thickness[iworld,jworld]
@@ -407,6 +412,8 @@ function remask_plate!( plate, subduction_footprint )
     # initialize, update, and delete plate points.
     # finds grid points of subduction and crust creation on plate fields.
     # imports crust_thickness as it stands in world grid.
+
+    #println("beginning plate ", plate.plateID)
 
     age = world.age
     if plate.resolvetime != age
@@ -522,6 +529,7 @@ function remask_plate!( plate, subduction_footprint )
                     if world.crust_type[iworld,jworld] == ocean_crust
                         plate.tectonics[iplate,jplate] = new_ocean_crust 
                         plate.crust_density[iplate,jplate] = rho_ocean_crust
+                        plate.crust_composition[iplate,jplate] = mafic_crust
                         plate.geomorphology[iplate,jplate] = pelagic_seafloor
                         plate.sediment_thickness[iplate,jplate] = 0. # initial_ocean_sediment_thickness
                         plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
@@ -532,6 +540,7 @@ function remask_plate!( plate, subduction_footprint )
                     else # must be a continent
                         plate.tectonics[iplate,jplate] = new_continent_crust 
                         plate.crust_density[iplate,jplate] = rho_continent_crust
+                        plate.crust_composition[iplate,jplate] = felsic_crust
                         plate.geomorphology[iplate,jplate] = sedimented_land
                         plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
                         plate.sediment_surface_fractions[iplate,jplate,:] .= initial_sediment_fractions
@@ -688,6 +697,9 @@ function remask_plates()   # subduction and crust creation
     Threads.@threads for i_plate = 1:n_plates
 
         plateID = world.plateIDlist[i_plate]  
+
+        #println("beginning plate ",plateID )
+
         if haskey(plates,plateID) == false
             plates[plateID] = create_blank_plate(plateID)
             println("emergency plate creation in remask_plates ", plateID)
@@ -942,6 +954,7 @@ function copy_plate_point_plate12coord!(newplate,oldplate,ixoldplate,iyoldplate,
         newplate.crust_age[ixnewplate,iynewplate] = 0.
         newplate.crust_thickness[ixnewplate,iynewplate] = ocean_crust_h0
         newplate.crust_density[ixnewplate,iynewplate] = rho_ocean_crust
+        newplate.crust_composition[ixnewplate, iynewplate] = mafic_crust
         newplate.geomorphology[ixnewplate,iynewplate] = pelagic_seafloor
         newplate.tectonics[ixnewplate,iynewplate] = new_ocean_crust
 
@@ -956,6 +969,7 @@ function copy_plate_point_plate12coord!(newplate,oldplate,ixoldplate,iyoldplate,
         newplate.crust_age[ixnewplate,iynewplate] = oldplate.crust_age[ixoldplate,iyoldplate]
         newplate.crust_thickness[ixnewplate,iynewplate] = oldplate.crust_thickness[ixoldplate,iyoldplate]
         newplate.crust_density[ixnewplate,iynewplate] = oldplate.crust_density[ixoldplate,iyoldplate]
+        newplate.crust_composition[ixnewplate,iynewplate] = oldplate.crust_composition[ixoldplate,iyoldplate]
         newplate.geomorphology[ixnewplate,iynewplate] = oldplate.geomorphology[ixoldplate,iyoldplate]
         newplate.sediment_thickness[ixnewplate,iynewplate] = 
             oldplate.sediment_thickness[ixoldplate,iyoldplate]
@@ -972,6 +986,7 @@ function delete_plate_point!(oldplate,ixold,iyold)
     oldplate.crust_age[ixold,iyold] = 0.
     oldplate.crust_thickness[ixold,iyold] = 0.
     oldplate.crust_density[ixold,iyold] = 0.
+    oldplate.crust_composition[ixold, iyold]
     oldplate.sediment_thickness[ixold,iyold] = 0.
     oldplate.sediment_surface_fractions[ixold,iyold,:] .= 0.
     oldplate.sediment_layer_thickness[ixold,iyold,:] .= 0.
@@ -1081,6 +1096,8 @@ function apply_tectonics_changes_to_plates( uplift_rate )
                             world.crust_thickness[iworld,jworld]   
                         plates[plateID].crust_density[iplate,jplate] =
                             world.crust_density[iworld,jworld]   
+                        plates[plateID].crust_composition[iplate, jplate] =
+                            world.crust_composition[iworld,jworld] 
                     end
                 end
             end
@@ -1102,6 +1119,8 @@ function apply_geomorphology_changes_to_plates()
                         world.crust_thickness[iworld,jworld]                    
                     plates[plateID].crust_density[iplate,jplate] =
                         world.crust_density[iworld,jworld]
+                    plates[plateID].crust_composition[iplate,jplate] =
+                        world.crust_composition[iworld,jworld]
                     plates[plateID].geomorphology[iplate,jplate] =
                         world.geomorphology[iworld,jworld]
                     plates[plateID].tectonics[iplate,jplate] =

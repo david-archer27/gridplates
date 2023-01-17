@@ -167,7 +167,7 @@ function setup_cap_carbonates()
         end
     end
     new_sediment_thickness, new_sediment_surface_fractions = 
-        apply_land_sediment_fluxes( initial_land_sediment_fraction_deposition_rate_fields )
+        apply_continental_sediment_fluxes( initial_land_sediment_fraction_deposition_rate_fields )
     return new_sediment_thickness, new_sediment_surface_fractions
 end
 

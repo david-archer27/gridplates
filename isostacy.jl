@@ -11,6 +11,23 @@ function muddy_isostatic_freeboard( sediment_thickness_change )
         world.elevation_offset)
     return freeboard
 end
+function isostacy_point(crust_thickness,crust_density,sediment_thickness,
+    elevation_offset)
+    surface_boundary_mass =
+        crust_thickness * crust_density +
+        sediment_thickness * rho_sediment
+    surface_boundary_thickness =
+        crust_thickness + 
+        sediment_thickness
+    equivalent_mantle_thickness =
+        surface_boundary_mass /
+        rho_mantle
+    surface_elevation = surface_boundary_thickness -
+        equivalent_mantle_thickness + elevation_offset
+    freeboard = surface_elevation -
+        world.sealevel + sealevel_base
+    return surface_elevation, freeboard
+end
 function isostacy(crust_thickness,crust_density,sediment_thickness,
     elevation_offset) # sets the elevation of the solid surface rel to mantle line
     # time independent
@@ -18,22 +35,19 @@ function isostacy(crust_thickness,crust_density,sediment_thickness,
     freeboard = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
-            surface_boundary_mass =
-                crust_thickness[ix,iy] * crust_density[ix,iy] +
-                sediment_thickness[ix,iy] * rho_sediment
-            surface_boundary_thickness =
-                crust_thickness[ix,iy] + 
-                sediment_thickness[ix,iy]
-            equivalent_mantle_thickness =
-                surface_boundary_mass /
-                rho_mantle
-            surface_elevation[ix,iy] = surface_boundary_thickness -
-                equivalent_mantle_thickness + elevation_offset[ix,iy]
-            freeboard[ix,iy] = surface_elevation[ix,iy] -
-                world.sealevel + sealevel_base
+            surface_elevation[ix,iy], freeboard[ix,iy] = 
+                isostacy_point( crust_thickness[ix,iy], crust_density[ix,iy],
+                    sediment_thickness[ix,iy], elevation_offset[ix,iy] )
         end
     end
     return surface_elevation, freeboard
+end
+function hack_crust_thickness_to_elevation( ix,iy,target_elevation )
+    # crust_thickness, elevation, crust_density, sediment_thickness, elevation_offset )
+    this_crust_freeboard_expression = 1. - world.crust_density[ix,iy] / rho_mantle
+    elevation_misfit = world.freeboard[ix,iy] - target_elevation
+    world.crust_thickness[ix, iy] += elevation_misfit *
+        this_crust_freeboard_expression
 end
 function crust_level()
     surface_boundary_mass =
@@ -65,53 +79,48 @@ function calculate_ocean_crust_depth_unused(agefield) # from Stein and Stein 199
     end
     return crustdepthfield
 end
-function ocean_thermal_boundary_layer( )
+#=function ocean_thermal_boundary_layer( )
     elevation_offset = ocean_thermal_boundary_layer(world.crust_age,
         world.crust_thickness,world.crust_density)
     return elevation_offset
-end
-function ocean_thermal_boundary_layer(crust_age,crust_thickness,crust_density) # sets world.elevation_offset etc for ocn
+end=#
+function ocean_thermal_boundary_layer( ) # crust_age,crust_thickness,crust_density) # sets world.elevation_offset etc for ocn
     # elevation_offset could also be used to tweak continents up and down
     # time independent, just based on crust age
     kappa = 1.e-6
     thermal_expansion = 3.3e-5
-    elevation_offset = fill(0.,nx,ny)
+    #elevation_offset = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
             if world.crust_type[ix,iy] == ocean_crust
-                age = crust_age[ix,iy] * 1.e6  # years
+                age = world.crust_age[ix,iy] * 1.e6  # years
                 boundary_thickness = sqrt( kappa * age * 3.14e7) # meters, inc crust
-                boundary_thickness = max(boundary_thickness,crust_thickness[ix,iy])
-                mantle_boundary_thickness = boundary_thickness - crust_thickness[ix,iy]
+                boundary_thickness = max(boundary_thickness,world.crust_thickness[ix,iy])
+                mantle_boundary_thickness = boundary_thickness - world.crust_thickness[ix,iy]
                 temperature_crust_base = mantle_T0
                 if mantle_boundary_thickness > 0.
                     #temperature_crust_base = mantle_T0 -
                     #    ( mantle_T0 - ocean_T0 ) *
                     #    crust_thickness[ix,iy] / boundary_thickness
-                    temperature_crust_base = mantle_T0 * crust_thickness[ix,iy] /
+                    temperature_crust_base = mantle_T0 * world.crust_thickness[ix,iy] /
                         boundary_thickness
                 end
                 mantle_bl_temp_avg = ( mantle_T0 + temperature_crust_base ) / 2.
                 crust_temp_avg = ( ocean_T0 + temperature_crust_base ) / 2.
-                crust_density[ix,iy] = rho_ocean_crust *
+                world.crust_density[ix,iy] = rho_ocean_crust *
                     ( 1. - thermal_expansion * ( crust_temp_avg - mantle_T0 / 2. ) )
                 #crust_density[ix,iy] = rho_ocean_crust * 
                 #    ( 1. + thermal_expansion * ( crust_temp_avg - ocean_T0 ) )
                 mantle_bl_density = rho_mantle *
                     ( 1. - thermal_expansion * ( mantle_bl_temp_avg - mantle_T0 ) )
-                crust_elevation_offset = crust_thickness[ix,iy] * 
-                    ( 1. - rho_ocean_crust / crust_density[ix,iy] )
+                crust_elevation_offset = world.crust_thickness[ix,iy] * 
+                    ( 1. - rho_ocean_crust / world.crust_density[ix,iy] )
                 mantle_elevation_offset = mantle_boundary_thickness *
                     ( 1. - rho_mantle / mantle_bl_density )
-                elevation_offset[ix,iy] = - crust_elevation_offset - mantle_elevation_offset
-                #world.crust_thickness[ix,iy] = ocean_crust_h0
-                #world.crust_density[ix,iy] = crust_density
-            else
-                elevation_offset[ix,iy] = 0.
+                world.elevation_offset[ix,iy] = - crust_elevation_offset - mantle_elevation_offset
             end
         end
     end
-    return elevation_offset
 end
 function compute_freeboard()
     for ix in 1:nx
