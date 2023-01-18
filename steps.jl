@@ -19,7 +19,7 @@ function step_everything(  ) # rebuilds the world at the new time
         after_tectonics_world_inventories = world_sediment_inventories(  )
     end
 
-    world.sealevel = get_sealevel( world.age )
+    world.sealevel = get_sealevel( world.age )# - 400.
     logging_println("Sea level ", world.sealevel)
     world.elevation_offset .= 0.
 

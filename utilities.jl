@@ -199,7 +199,7 @@ function apply_crust_erosion_rate()
     world.crust_thickness .-= erosion_rate .* main_time_step
 end
 function apply_continental_sediment_flux(ix, iy, deposition_rates) # specific to continental crust data structure
-    new_sediment_thickness = 0.0
+    new_sediment_thickness = world.sediment_thickness[ix,iy]
     for i_sedtype in 1:n_sediment_types
         new_sediment_thickness += deposition_rates[i_sedtype] *
                                   main_time_step
@@ -233,7 +233,8 @@ function apply_continental_sediment_fluxes(land_sediment_fraction_deposition_rat
     for ix in 1:nx
         for iy in 1:ny
             new_sediment_thicknesses[ix, iy], new_sediment_fractions[ix, iy, :] =
-                apply_continental_sediment_flux(ix, iy, land_sediment_fraction_deposition_rate_fields[ix, iy, :])
+                apply_continental_sediment_flux(ix, iy, 
+                    land_sediment_fraction_deposition_rate_fields[ix, iy, :])
         end
     end
 
