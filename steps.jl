@@ -1018,7 +1018,8 @@ function step_geomorph() # requires previous run with tectonics to fill world di
                              denude_sources
         inventory_change_rate = (new_ocean_sed_inventories .- old_ocean_sed_inventories) /
                                 main_time_step
-        mass_balance = inventory_change_rate - ocean_sed_depo_rates #+ 
+        mass_balance = inventory_change_rate - ocean_sed_depo_rates + aolean_deposition 
+        #+ 
         #ocn2cont_redist_sources # makes inv go down, so added
         flux_balance = full_total_sources .- ocean_sed_depo_rates
         logging_println("")
