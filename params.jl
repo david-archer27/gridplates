@@ -284,7 +284,7 @@ enable_watch_orogeny_substeps = false
 enable_check_sediment_layer_inventory = false
 enable_step_everything_diagnostics = true
 enable_step_geomorph_diagnostics = true
-enable_extraverbose_step_geomorph_diagnostics = true
+enable_extraverbose_step_geomorph_diagnostics = false
 enable_distribute_ocean_fluxes_diagnostics = true
 enable_watch_ocean_offshore_transport = false
 

@@ -19,7 +19,7 @@ function step_everything(  ) # rebuilds the world at the new time
         after_tectonics_world_inventories = world_sediment_inventories(  )
     end
 
-    world.sealevel = get_sealevel( world.age )# - 400.
+    world.sealevel = get_sealevel( world.age ) # - 400. # for setting a sea-level-typical initial for debugging
     logging_println("Sea level ", world.sealevel)
     world.elevation_offset .= 0.
 
@@ -436,9 +436,9 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     # continent and subduction uplift rates into *_orogenic_uplift_rate diags
     scotese_target_elevation = get_scotese_mountains()
-    uplift_scotese_mountains_by_crust_thickening( scotese_target_elevation )
+    uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
     isostacy()
-    
+
     get_mafics()
 
     #check_reburial_exposed_basement() 
@@ -596,7 +596,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             logging_println("    denuded ", n_denuded_tot)
         end
 
-        uplift_scotese_mountains_by_crust_thickening( scotese_target_elevation )
+        uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
         isostacy()
 
         need_another_loop = false
@@ -696,7 +696,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     end
 
     new_sediment_thickness, new_sediment_surface_fractions =
-        apply_continental_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
+        apply_continent_crust_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
     world.sediment_thickness[:, :] = new_sediment_thickness
     world.sediment_surface_fractions[:, :, :] = new_sediment_surface_fractions
     world.crust_thickness .-= orogenic_erosion_rate_field .* main_time_step
@@ -742,7 +742,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     logging_println("Ocean Sedimentation")
     #println("CaCO3 system")
 
-    ocean_thermal_boundary_layer( )
+    ocean_thermal_boundary_layer()
 
     continental_CaCO3_dissolution_rate = volume_field(
         land_sediment_fraction_dissolution_rate_fields[:, :, CaCO3_sediment])
@@ -804,6 +804,10 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     incoming_fluxes[:, :, CaCO3_sediment] .+=
         get_diag("coastal_CaCO3_flux") .+
         get_diag("pelagic_CaCO3_deposition_rate")
+    incoming_fluxes += redeposited_landed .+
+                       redeposited_submerged
+
+    incoming_fluxes[:, :, 0] .= 0.
     for i_sedtype in 1:n_sediment_types
         incoming_fluxes[:, :, 0] .+= incoming_fluxes[:, :, i_sedtype]
     end
@@ -812,8 +816,6 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     #=incoming_fluxes[:,:,1] = clay_dep
     incoming_fluxes[:,:,2] = CaCO3_dep
     incoming_fluxes[:,:,0] = clay_dep .+ CaCO3_dep=#
-    incoming_fluxes += redeposited_landed .+
-                       redeposited_submerged
     #offshelf_fluxes =  distribute_fluxes_uniformly_inside_boundary( 
     #    incoming_fluxes,  )     
 
@@ -826,7 +828,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     println("distributing ocean fluxes")
     accumulating_depositing_fluxes = distribute_ocean_sediment_fluxes(incoming_fluxes)
 
-    
+
     set_diag("seafloor_sediment_deposition_rate",
         accumulating_depositing_fluxes[:, :, 0])
     for i_sedtype in 1:n_sediment_types
@@ -856,7 +858,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     end
 
     if enable_step_geomorph_diagnostics
-        old_ocean_sed_inventories = world_ocean_sediment_inventories()
+        old_ocean_sed_inventories = world_sediment_inventories()
     end
 
     apply_submarine_sediment_fluxes()
@@ -870,7 +872,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         get_diag("continental_CaCO3_deposition_rate")
 
     new_sediment_thickness, new_sediment_surface_fractions =
-        apply_continental_sediment_fluxes(land_sediment_fraction_tweak_rate_fields)
+        apply_continent_crust_sediment_fluxes(land_sediment_fraction_tweak_rate_fields)
     world.sediment_thickness[:, :] = new_sediment_thickness
     world.sediment_surface_fractions[:, :, :] = new_sediment_surface_fractions
 
@@ -948,7 +950,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         logging_println("        flux bal ", flux_balances)
 
         # underwater on both continent and ocean crust
-        new_ocean_sed_inventories = world_ocean_sediment_inventories()
+        new_ocean_sed_inventories = world_sediment_inventories()
         total_sources = fill(0.0, 0:n_sediment_types)
         land_sources = fill(0.0, 0:n_sediment_types)
         ocean_sed_depo_rates = fill(0.0, 0:n_sediment_types)
@@ -1010,12 +1012,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
         from_land_sources = runoff_sources + aolean_deposition
         phys_total_sources = from_land_sources + ocean_orogenic_sources +
-            coastal_sources + pelagic_sources + continental_deposition
+                             coastal_sources + pelagic_sources + continental_deposition
         full_total_sources = phys_total_sources +
-            cont2ocn_redist_sources + ocn2cont_redist_sources +
-            denude_sources
+                             cont2ocn_redist_sources + ocn2cont_redist_sources +
+                             denude_sources
         inventory_change_rate = (new_ocean_sed_inventories .- old_ocean_sed_inventories) /
-            main_time_step
+                                main_time_step
         mass_balance = inventory_change_rate - ocean_sed_depo_rates #+ 
         #ocn2cont_redist_sources # makes inv go down, so added
         flux_balance = full_total_sources .- ocean_sed_depo_rates

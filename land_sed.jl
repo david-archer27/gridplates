@@ -554,7 +554,7 @@ function land_fraction_runoff_fluxes( new_elevation_field,
     diffusive_mask, ocean_sink )    
 
     new_sediment_thickness, new_sediment_fractions = 
-        apply_continental_sediment_fluxes( 
+        apply_continent_crust_sediment_fluxes( 
             land_sediment_fraction_deposition_rate_fields ) 
     coastal_sediment_fraction_runoff_flux = 
         fill(0.,nx,ny,0:n_sediment_types)

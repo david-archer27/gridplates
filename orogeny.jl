@@ -760,18 +760,18 @@ function expand_blob_boundary_subduction_to_fringe!( values, mask )
 function distribute_fluxes_uniformly_inside_boundary( fluxes, source_mask )
     output_fluxes = fill( 0.,nx,ny,0:n_sediment_types )
     blobs = get_blobs( source_mask )
-    blob_areas = get_blob_areas( blobs )
-    neighbor_blobs = get_blob_neighbor_fields( blobs )
-    neighbor_blob_areas = get_blob_areas( neighbor_blobs )
+    #blob_areas = get_blob_areas( blobs )
+    fringe_blobs = get_blob_fringe_fields( blobs )
+    fringe_blob_areas = get_blob_areas( fringe_blobs )
     for i_area in 1:length( blobs )
         blob = blobs[ i_area ]
-        neighbor_blob = neighbor_blobs[i_area] 
+        fringe_blob = fringe_blobs[i_area] 
         if volume_field( fluxes[ :,:,0 ] .* blob ) > 0
             #println("distributing blob ",i_area)
             for i_sedtype in 1:n_sediment_types
                 integrated_flux = volume_field( fluxes[ :,:,i_sedtype ] .* blob )
-                deposition_rate = integrated_flux / neighbor_blob_areas[ i_area ]
-                output_fluxes[:,:,i_sedtype] += neighbor_blob .* deposition_rate
+                deposition_rate = integrated_flux / fringe_blob_areas[ i_area ]
+                output_fluxes[:,:,i_sedtype] += fringe_blob .* deposition_rate
                 #=for ix in 1:nx
                     for iy in 1:ny
                         if neighbor_blobs[i_area][ix,iy] > 0

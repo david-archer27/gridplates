@@ -52,14 +52,10 @@ function run_timeseries()
     global log_IO = open(output_directory * "/logfile." * output_tag * ".txt", "w")
     save_world()
     while world.age > 0
-        verbose = true
-        if floor(world.age / 100) == world.age / 100 || world.age == main_time_step
-            verbose = true
-        end
         step_everything()
         flush(log_IO)
         save_world()
-        time_interval = 250 # main_time_step * 10
+        time_interval = 50 # main_time_step * 10
         if floor(world.age/time_interval) == world.age/time_interval && 
             world.age >= time_interval
             save_plates()

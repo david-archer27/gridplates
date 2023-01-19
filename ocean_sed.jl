@@ -242,7 +242,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                             depositing_fluxes[ix,iy,i_sedtype] +=
                                 meters_deposited_locally * fraction / main_time_step
                         end
-                        incoming_fluxes[ix,iy,0] -= meters_exported / main_time_step
+                        #incoming_fluxes[ix,iy,0] -= meters_exported / main_time_step
                         depositing_fluxes[ix,iy,0] +=
                             meters_deposited_locally / main_time_step
 

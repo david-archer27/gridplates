@@ -198,7 +198,10 @@ function apply_crust_erosion_rate()
     erosion_rate = get_diag("crust_erosion_rate")
     world.crust_thickness .-= erosion_rate .* main_time_step
 end
-function apply_continental_sediment_flux(ix, iy, deposition_rates) # specific to continental crust data structure
+function apply_continent_crust_sediment_flux(ix, iy, deposition_rates) 
+    # specific to continental crust data structure
+    # returns new sediment characteristics without altering world.variables,
+    # because sometimes it has to be done provisionally
     new_sediment_thickness = world.sediment_thickness[ix,iy]
     for i_sedtype in 1:n_sediment_types
         new_sediment_thickness += deposition_rates[i_sedtype] *
@@ -221,7 +224,7 @@ function apply_continental_sediment_flux(ix, iy, deposition_rates) # specific to
     return new_sediment_thickness, new_sediment_fractions
 end
 
-function apply_continental_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
+function apply_continent_crust_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
     # applied after land surface processes, which only occur on continental crust,
     # and again for continental CaCO3 deposition 
     # the sediments on land are unresolved in time, stored in 2d arrays
@@ -233,7 +236,7 @@ function apply_continental_sediment_fluxes(land_sediment_fraction_deposition_rat
     for ix in 1:nx
         for iy in 1:ny
             new_sediment_thicknesses[ix, iy], new_sediment_fractions[ix, iy, :] =
-                apply_continental_sediment_flux(ix, iy, 
+                apply_continent_crust_sediment_flux(ix, iy, 
                     land_sediment_fraction_deposition_rate_fields[ix, iy, :])
         end
     end
@@ -270,7 +273,7 @@ function apply_continental_sediment_fluxes(land_sediment_fraction_deposition_rat
     end =#
     return new_sediment_thicknesses, new_sediment_fractions
 end
-function apply_ocean_crust_sediment_fluxes(ix, iy, fluxes)
+function apply_ocean_crust_sediment_flux(ix, iy, fluxes)
     # only called once so need to return values, just apply them 
     new_total_sediment_thickness = world.sediment_thickness[ix, iy]
     new_sediment_layer_thickness = world.sediment_layer_thickness[ix, iy, current_time_bin()]
@@ -312,8 +315,14 @@ function apply_submarine_sediment_fluxes()
         get_frac_diag("seafloor_sediment_fraction_deposition_rate")
     for ix in 1:nx
         for iy in 1:ny
-            apply_ocean_crust_sediment_fluxes(ix, iy, 
-                sediment_fraction_deposition_rates[ix,iy,:])
+            if world.crust_type[ix,iy] == ocean_crust
+                apply_ocean_crust_sediment_flux(ix, iy, 
+                    sediment_fraction_deposition_rates[ix,iy,:])
+            else
+                world.sediment_thickness[ix, iy], world.sediment_surface_fractions[ix, iy, :] =
+                    apply_continent_crust_sediment_flux(ix, iy, 
+                        sediment_fraction_deposition_rates[ix,iy,:])
+            end
         end
     end
 end
