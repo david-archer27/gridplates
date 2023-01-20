@@ -1,15 +1,21 @@
-function get_scotese_mountains( )
-    age_string = lpad(Int(ceil(world.age)),3,"0")
-    CS_file_name = code_base_directory * 
-        "/data/scotese_elevation_files_today/scotese_today." *
-        age_string * "Ma.bson"
-    BSON.@load CS_file_name twisted_elevation
-    target_elevation = fill_world_orogeny( twisted_elevation )
-    
-    #target_elevation = rotate_field( twisted_elevation, 
-    #    eq_mask(world.crust_type,continent_crust), cont_ID, cont_start, world.age )
+function get_scotese_mountains()
+    age_string = lpad(Int(ceil(world.age)), 3, "0")
+    CS_file_name = code_base_directory *
+                   "/drivers/scotese_elevation_files_modern/scotese_elev_today." *
+                   age_string * "Ma.bson"
+    BSON.@load CS_file_name elevation
+    rotated_elevation = rotate_field_0_to_current_age(elevation)
+    #target_elevation = fill_world_orogeny( twisted_elevation )
+
     #smooth_world!( target_elevation, 1000. )
-    return target_elevation
+    return rotated_elevation
+end
+function rotate_field_0_to_current_age( field_at_time_0 )
+    start_time_field = fill(1000.,nx,ny)
+    field_past = 
+        rotate_field_0_to_current_age( 
+            field_at_time_0, start_time_field )
+    return field_past
 end
 function rotate_field_0_to_current_age(field_at_time_0, start_time_field )
     #continent_crust_past = eq_mask(world.crust_type,continent_crust)
@@ -107,7 +113,8 @@ function get_mafics()
     for ix in 1:nx
         for iy in 1:ny
             if current_large_igneous_provinces[ix, iy] == 1.0 ||
-                current_ophiolites[ix, iy] == 1.0
+                current_ophiolites[ix, iy] == 1.0 &&
+                world.crust_type[ix,iy] == continent_crust
 
                 world.crust_composition[ix, iy] = mafic_crust
                 world.crust_thickness[ix, iy] +=
@@ -119,8 +126,33 @@ function get_mafics()
         end
     end
 end
-#function get_ice_sheets()
-
+function get_ice_sheets()
+    age_string = lpad(Int(world.age),3,"0")
+    cd( "drivers/scotese_paleo_temp_files_modern")
+    file_list = readdir()
+    file_name = "scotese_ptemp." *
+        age_string * "Ma.bson"
+    ice_sheet_mask = fill(0.,nx,ny)
+    if file_name in file_list
+        BSON.@load file_name paleo_temp_modern
+        paleo_temp = rotate_field_0_to_current_age( paleo_temp_modern )
+        ice_sheet_mask = lt_mask(paleo_temp, -20) 
+    end
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.geomorphology[ix,iy] == ice_sheet_covered &&
+                ice_sheet_mask[ix,iy] == 0.
+                    world.geomorphology[ix, iy] = exposed_basement
+            end
+            if ice_sheet_mask[ix, iy] > 0.0 &&
+                world.crust_type[ix,iy] == continent_crust
+                    world.geomorphology[ix, iy] = ice_sheet_covered
+            end
+        end
+    end
+    cd( code_base_directory )
+    return ice_sheet_mask
+end
 function uplift_scotese_mountains_by_crust_thickening( scotese_target_elevation )
     for ix in 1:nx
         for iy in 1:ny
@@ -672,35 +704,43 @@ function smooth_continental_crust_blob( blob )
         end
     end # diffuse or no
 end
-#function smooth_orogenic_topography()
-#function predict_orogenic_erosion_fluxes()
-function generate_orogenic_erosion_fluxes()
-    # resets then accumulates land_orogenic_clay_flux and coastal_orogenic_clay_flux
-    # also sets cruse_erosion_rate,
-    # doesnt need to accumulate since there will be no overlap of orogenic areas.
-    # uses exposed_basement
-    verbose = false
-    #reset_diag("land_orogenic_clay_flux")
-    #reset_diag("coastal_orogenic_clay_flux")
-    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement )
-    orogenic_clay_flux = fill(0.,nx,ny)
+
+function generate_crust_erosion_fluxes()
+    erosional_sediment_fluxes = fill(0.0, nx, ny, 0:n_sediment_types)
+    ice_sheet_sediment_fluxes = fill(0.0, nx, ny, 0:n_sediment_types)
+
     for ix in 1:nx
         for iy in 1:ny
-            if orogenic_crust_mask[ix,iy] == 1
-                orogenic_clay_flux[ix,iy] = 
-                    max( calculate_orogenic_erosion_rate( world.freeboard[ix,iy] ), 0. )
+            tau = orogenic_erosion_tau_apparent * crust_freeboard_expression
+            sed_fluxes = fill(0.0, 0:n_sediment_types)
+            if world.geomorphology[ix, iy] == ice_sheet_covered
+                tau = orogenic_erosion_tau_apparent * crust_freeboard_expression
+            end
+            sed_fluxes[0] = max(world.freeboard[ix, iy] / tau, 0.0)
+            sed_fluxes[clay_sediment] =
+                sed_fluxes[0] * (
+                    world.crust_composition[ix, iy] * felsic_CaO_fraction +
+                    (1 - world.crust_composition[ix, iy]) * ultramafic_CaO_fraction)
+            sed_fluxes[CaO_sediment] =
+                sed_fluxes[0] -
+                sed_fluxes[clay_sediment]
+            if world.geomorphology[ix, iy] == exposed_basement
+                erosional_sediment_fluxes[ix, iy, :] = sed_fluxes
+            end
+            if world.geomorphology[ix, iy] == ice_sheet_covered
+                ice_sheet_sediment_fluxes[ix, iy, :] = sed_fluxes
             end
         end
     end
-    return orogenic_clay_flux
+    return erosional_sediment_fluxes, ice_sheet_sediment_fluxes
 end
-function get_denuded_sediment_fluxes()
-    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
-        is_land() 
+function get_denuded_sediment_fluxes( denuded_mask )
+    #orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
+    #    is_land() 
     denuded_sediment_fluxes = fill(0.,nx,ny,0:n_sediment_types)
     for ix in 1:nx
         for iy in 1:ny
-            if orogenic_crust_mask[ix,iy] == 1
+            if denuded_mask[ix,iy] == 1
                 for i_sedtype in 1:n_sediment_types
                     denuded_sediment_fluxes[ix,iy,i_sedtype] = 
                         world.sediment_thickness[ix,iy] * 

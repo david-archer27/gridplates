@@ -286,7 +286,7 @@ west_coast_rainfall_penetration_scale = 30.0
 minimum_rainfall = 0.1
 maritime_rainfall_smoothing = 0.0
 
-function read_scotese_twisted_elevation(file_name)
+function read_scotese_csv(file_name)
     twisted_elevations = fill(0.0, nx, ny)
     f = open(file_name)
     lines = readlines(f)
@@ -300,6 +300,22 @@ function read_scotese_twisted_elevation(file_name)
     end
     return twisted_elevations
 end
+function translate_scotese_ptemp_files()
+    cd("../IceMaps_CRS_v23019")
+    file_list = readdir()
+    for file_name in file_list
+        paleo_temp_modern = read_scotese_csv(file_name)
+        #paleo_temp = fill_world_orogeny( paleo_temp_modern )
+        file_age = file_name[1:3]
+        outfile_name = code_base_directory * 
+            "/drivers/scotese_paleo_temp_files_modern/scotese_ptemp." *
+            file_age * "Ma.bson"
+        BSON.@save outfile_name paleo_temp_modern
+    end
+    cd( code_base_directory )
+end
+
+
 function write_scotese_csv_files()
     cd("../Scotese_paleoelevation_modern_locations")
     file_list = readdir()
@@ -362,15 +378,15 @@ end
 function read_all_scotese_twisted_elevation_files()
     cd("../Scotese_paleoelevation_modern_locations")
     file_list = readdir()
-    for file_name in file_list
+    for file_name in file_list[2:end]
         age_string = file_name[1:3]
         age = parse(Float64, age_string)
-        twisted_elevation = read_scotese_twisted_elevation(file_name)
+        elevation = read_scotese_csv(file_name)
         out_file_name = code_base_directory *
-                        "/data/scotese_elevation_files_today/scotese_today." *
+                        "/drivers/scotese_elevation_files_modern/scotese_elev_today." *
                         age_string * "Ma.bson"
         rm(out_file_name, force=true)
-        BSON.@save out_file_name twisted_elevation
+        BSON.@save out_file_name elevation
         println(file_name)
     end
     cd(code_base_directory)

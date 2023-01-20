@@ -64,4 +64,7 @@ function run_timeseries()
     end
     close(log_IO)
 end
-
+#world = read_world(300)
+#plates = read_plates()
+#step_everything()
+#create_everything(300)

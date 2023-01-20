@@ -439,8 +439,6 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
     isostacy()
 
-    get_mafics()
-
     #check_reburial_exposed_basement() 
 
     if enable_step_geomorph_diagnostics
@@ -469,6 +467,10 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             end
         end
     end
+    get_mafics()
+    get_ice_sheets()
+
+
 
     diffusive_mask = eq_mask(world.geomorphology, sedimented_land)
     orogenic_mask = eq_mask(world.geomorphology, exposed_basement)
@@ -482,17 +484,6 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     #    eq_mask(world.crust_type,ocean_crust)# .* 
     #    eq_mask(world.geomorphology,pelagic_seafloor)
 
-    orogenic_erosion_rate_field = fill(0.0, nx, ny, 0:n_sediment_types)
-    orogenic_sediment_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    denuded_sediment_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    orogenic_boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    denuded_boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    aolean_erosion_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    aolean_deposition_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-    sediment_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
-
-    land_sediment_deposition_rate_field = fill(0.0, nx, ny)
-    land_sediment_fraction_dissolution_rate_fields = fill(0.0, nx, ny, n_sediment_types)
     original_elevation_field = world.freeboard
     new_elevation_field = fill(0.0, nx, ny)
     visualize_denuding_landscape_field = fill(0.0, nx, ny)
@@ -502,41 +493,58 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     last_deposition_rate = 0.0
     n_denuded_tot = 0
     n_loops_already = 0
+
+    erosion_rate_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    ice_sheet_erosion_rate_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    sediment_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    denuded_sediment_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    denuded_boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    aolean_erosion_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    aolean_deposition_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    sediment_erosion_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    land_diffusive_boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
+    land_sediment_deposition_rate_field = fill(0.0, nx, ny)
+    land_sediment_fraction_dissolution_rate_fields = fill(0.0, nx, ny, n_sediment_types)
+
     while need_another_loop == true
         n_loops_already += 1
         diffusive_mask = eq_mask(world.geomorphology, sedimented_land)
         orogenic_mask = eq_mask(world.geomorphology, exposed_basement)
-        orogenic_erosion_rate_field = generate_orogenic_erosion_fluxes() .*
-                                      gt_mask(world.freeboard, 0.0)
+        ice_sheet_mask = eq_mask(world.geomorphology, ice_sheet_covered)
+        erosion_rate_fields, ice_sheet_erosion_rate_fields =
+            generate_crust_erosion_fluxes()
         for i_sedtype in 1:n_sediment_types
-            orogenic_sediment_source_fields[:, :, i_sedtype] = orogenic_erosion_rate_field .*
-                                                               orogenic_sediment_source_fractions[i_sedtype] .*
-                                                               rho_continent_crust ./ rho_sediment
+            sediment_erosion_source_fields[:, :, i_sedtype] =
+                (erosion_rate_fields[:, :, i_sedtype] .+
+                 ice_sheet_erosion_rate_fields[:, :, i_sedtype]) .*
+                rho_continent_crust ./ rho_sediment
         end
-        update_flux_totals!(orogenic_sediment_source_fields)
-        orogenic_boundary_source_fields =
-            distribute_fluxes_uniformly_outside_boundary(orogenic_sediment_source_fields,
-                orogenic_mask)
-
-        denuded_sediment_source_fields = get_denuded_sediment_fluxes()
+        update_flux_totals!(sediment_erosion_source_fields)
+        denuded_mask = orogenic_mask .+ ice_sheet_mask
+        erosion_boundary_source_fields =
+            distribute_fluxes_uniformly_outside_boundary(sediment_erosion_source_fields,
+                denuded_mask)
+        denuded_sediment_source_fields = get_denuded_sediment_fluxes(denuded_mask)
         update_flux_totals!(denuded_sediment_source_fields)
         #println("denuded src ", volume_fields(denuded_sediment_source_fields))
         denuded_boundary_source_fields =
             distribute_fluxes_uniformly_outside_boundary(denuded_sediment_source_fields,
-                orogenic_mask)
+                denuded_mask)
+
         #denuded_land_boundary_source_fields = denuded_boundary_source_fields .* is_land()
         #println(" = denuded bdy? ", volume_fields(denuded_boundary_source_fields))
 
-        sediment_source_fields = (orogenic_boundary_source_fields .+
-                                  denuded_boundary_source_fields) .* subaereal_mask
+        land_diffusive_boundary_source_fields = (erosion_boundary_source_fields .+
+                                                 denuded_boundary_source_fields) .* subaereal_mask
         #sediment_source_fields -= aolean_erosion_fields
         #sediment_source_fields -= land_sediment_fraction_dissolution_rate_fields
-        update_flux_totals!(sediment_source_fields)
+        update_flux_totals!(land_diffusive_boundary_source_fields)
         #println(" sediment_source_fields ",sediment_source_fields)
 
         new_elevation_field, land_sediment_deposition_rate_field =
             land_bulk_sediment_transport(original_elevation_field,
-                diffusive_mask, sediment_source_fields[:, :, 0], submerged_mask)
+                diffusive_mask, land_diffusive_boundary_source_fields[:, :, 0], submerged_mask)
 
         n_denuded = check_for_bedrock_exposure(land_sediment_deposition_rate_field)
         n_denuded_tot = get_maskfield_census(eq_mask(world.geomorphology, exposed_basement))
@@ -561,7 +569,8 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
         for ix in 1:nx
             for iy in 1:ny
-                if world.geomorphology[ix, iy] == exposed_basement
+                if world.geomorphology[ix, iy] == exposed_basement ||
+                   world.geomorphology[ix, iy] == ice_sheet_covered
                     land_sediment_deposition_rate_field[ix, iy] =
                         -world.sediment_thickness[ix, iy] / main_time_step
                 end
@@ -614,10 +623,11 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         end
     end # of the denuded gridpoints iterative loop
 
-    set_diag("crust_erosion_rate", orogenic_erosion_rate_field)
-    set_frac_diag("crust_orogenic_fraction_flux", orogenic_sediment_source_fields)
-    set_frac_diag("land_orogenic_fraction_flux", orogenic_boundary_source_fields .* subaereal_mask)
-    set_frac_diag("coastal_orogenic_fraction_flux", orogenic_boundary_source_fields .* submerged_mask)
+    set_diag("crust_erosion_rate", erosion_rate_fields[:,:,0])
+    set_diag("ice_sheet_crust_erosion_rate", ice_sheet_erosion_rate_fields[:,:,0])
+    set_frac_diag("crust_orogenic_fraction_flux", sediment_source_fields)
+    set_frac_diag("land_orogenic_fraction_flux", boundary_source_fields .* subaereal_mask)
+    set_frac_diag("coastal_orogenic_fraction_flux", boundary_source_fields .* submerged_mask)
     set_frac_diag("denuded_sediment_source_fraction_flux", denuded_sediment_source_fields[:, :, 1:n_sediment_types])
     set_frac_diag("denuded_land_boundary_fraction_flux",
         denuded_boundary_source_fields[:, :, 1:n_sediment_types] .* subaereal_mask)
@@ -699,9 +709,10 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         apply_continent_crust_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
     world.sediment_thickness[:, :] = new_sediment_thickness
     world.sediment_surface_fractions[:, :, :] = new_sediment_surface_fractions
-    world.crust_thickness .-= orogenic_erosion_rate_field .* main_time_step
-
-    aolean_erosion_fields, aolean_deposition_fields = aolean_transport()
+    world.crust_thickness .-= ( erosion_rate_fields[:,:,0] .+ 
+        ice_sheet_erosion_rate_fields[:, :, 0] ) .* main_time_step
+    
+    aolean_erosio, aolean_deposition_fields = aolean_transport()
     set_frac_diag("aolean_erosion_fraction_flux", aolean_erosion_fields)
     set_frac_diag("aolean_deposition_fraction_flux", aolean_deposition_fields)
     accum_frac_diag("land_sediment_fraction_deposition_rate",
@@ -807,7 +818,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     incoming_fluxes += redeposited_landed .+
                        redeposited_submerged
 
-    incoming_fluxes[:, :, 0] .= 0.
+    incoming_fluxes[:, :, 0] .= 0.0
     for i_sedtype in 1:n_sediment_types
         incoming_fluxes[:, :, 0] .+= incoming_fluxes[:, :, i_sedtype]
     end
@@ -1018,7 +1029,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
                              denude_sources
         inventory_change_rate = (new_ocean_sed_inventories .- old_ocean_sed_inventories) /
                                 main_time_step
-        mass_balance = inventory_change_rate - ocean_sed_depo_rates + aolean_deposition 
+        mass_balance = inventory_change_rate - ocean_sed_depo_rates + aolean_deposition
         #+ 
         #ocn2cont_redist_sources # makes inv go down, so added
         flux_balance = full_total_sources .- ocean_sed_depo_rates

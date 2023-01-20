@@ -1696,18 +1696,14 @@ function plot_add_continental_orogeny!(scene)
     Makie.contour!(scene,xcoords,ycoords,uplift_rate,color=:black)
     return scene
 end
-function plot_add_orogenies!(scene)
-    uplift_rate = get_diag("continent_orogenic_uplift_rate")
-    Makie.contour!(scene,xcoords,ycoords,uplift_rate,color=:red)
-
-    #subduction_uplifting = gt_mask(get_diag("subduction_orogenic_uplift_rate"),0.01)
-    #Makie.contour!(scene,xcoords,ycoords,subduction_uplifting,color=:green)
-
-    exposed_basement_field = eq_mask(world.geomorphology,exposed_basement)
-    Makie.contour!(scene,xcoords,ycoords,exposed_basement_field,color=:grey)
-
-    orogenies = active_orogenic_events()
-    text!(scene, orogenies, position = (0,-105),textsize=15)
+function plot_add_ice_sheets!(scene)
+    ice_sheet_mask = eq_mask(world.geomorphology, ice_sheet_covered)
+    Makie.contour!(scene, xcoords, ycoords, ice_sheet_mask, color=:white)
+    return scene
+end
+function plot_add_orogeny!(scene)
+    ice_sheet_mask = eq_mask(world.geomorphology,exposed_basement)
+    Makie.contour!(scene,xcoords,ycoords,ice_sheet_mask,color=:black)
     return scene
 end
 function plate_plot_add_outcrop!(scene,plate)

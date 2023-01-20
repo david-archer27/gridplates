@@ -903,7 +903,8 @@ function clear_world_process_arrays()
 end
 function clear_geomorph_process_arrays()
     for idiag in [
-        "crust_erosion_rate",               # units m/Myr, calc on substep
+        "crust_erosion_rate",   
+        "ice_sheet_crust_erosion_rate",            # units m/Myr, calc on substep
         #"crust_clay_source_rate",
         #"aolean_clay_erosion_rate", 
         #"aolean_clay_deposition_rate", 
