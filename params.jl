@@ -84,6 +84,7 @@ world_diag_names = ["ocean_created_plate_area",
     "continent_orogenic_uplift_rate",   # set in outer time loop, uplift +, meters / Myr
     "subduction_orogenic_uplift_rate",
     "crust_erosion_rate",               # units m/Myr, calc on substep
+    "ice_sheet_crust_erosion_rate",               # units m/Myr, calc on substep
     "land_orogenic_Ca_source_rates",
     #"crust_clay_source_rate",
     #"aolean_clay_erosion_rate", 
@@ -116,6 +117,7 @@ world_frac_diag_names = [
     "crust_orogenic_fraction_flux",
     "land_orogenic_fraction_flux",
     "coastal_orogenic_fraction_flux",
+    "ice_sheet_erosion_fraction_flux",
     "land_sediment_fraction_dissolution_rate",
     "land_sediment_fraction_deposition_rate",
     "land_trapped_sediment_rate",
@@ -157,6 +159,7 @@ ocean_crust = 1
 continent_crust = 2
 
 # world.geomorphology
+ice_sheet_covered = 3
 exposed_basement = 2
 sedimented_land = 1
 under_water = 0
@@ -197,9 +200,9 @@ initial_sediment_fractions = [0.975, 0.0, 0.025] # adjusted bc not pure CaO [ 0.
 orogenic_sediment_source_fractions = [0.95, 0.0, 0.05] # a bit higher for fresh clay?
 initial_land_sediment_thickness = 1.0;
 initial_ocean_sediment_thickness = 1.0;
-ultramafic_crust = 0.0;
+ultramafic_crust = 0.0; ultramafic_CaO_fraction = 0.5
 mafic_crust = 0.3;
-felsic_crust = 1.0;
+felsic_crust = 1.0; felsic_CaO_fraction = 0.1
 
 # Time 
 earliesttime = 540.0
@@ -231,7 +234,7 @@ atmCO2_base = 400.0
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "thursday_1_19"
+output_tag = "friday_1_20"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -323,6 +326,7 @@ land_base_diffcoeff = max_uplift_rate_target *
 
 land_base_diffcoeff *= 0.5
 orogenic_erosion_tau_apparent *= 2.0 # 1 # 5
+ice_sheet_erosion_tau_apparent = 2. * orogenic_erosion_tau_apparent
 orogenic_uplift_parameter *= 2.0 # 2.5 # 4. # 1.5 # back off because too much sed in ocean, elevation too high
 #subduction_orogeny_smooth_coeff = 0.
 
