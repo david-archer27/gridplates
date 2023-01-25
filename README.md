@@ -17,18 +17,23 @@ thickening the crust.
 
 Inputs of large igneous provinces and ophiolites are similarly done in modern-day locations, twisted
 back to their paleo locations at the appropriate times, which are the numbers in the input grid. A 
-crust_composition variable has been added but not yet implemented for weathering.  
+crust_composition variable has been added but not yet implemented for weathering.  Ice sheets are 
+imposed based on CESM results using the Scotese continental configurations, rotated to present-day by
+Chris, then rotated to Merdith positions at run time.  Ice is imposed where the temperature was less
+than -10 degrees C.  
 
-Land sediment transport is diffusive with a transport coefficient set in params.jl . Parts of the domain are completely denuded of sediment in the solution of the time step.  These grid cells are found by iteration.  First they are presumed to be sediment-covered at the end of the step.  Then the step is taken.  If a cell's projected sediment thickness at the end of the step is less than zero, then it is excluded from the calculation in a subsequent iteration.  Adjacent cells then go negative, so multiple passes are required.  
+Land sediment transport is diffusive with a transport coefficient set in params.jl . Parts of the domain are completely denuded of sediment in the solution of the time step.  These grid cells are found by iteration.  First they are presumed to be sediment-covered at the end of the step.  Then the step is taken.  If a cell's projected sediment thickness at the end of the step is less than zero, then it is excluded from the calculation in a subsequent iteration.  Adjacent cells then go negative, so multiple passes are required.  Sediment that is denuded by transport in this way, or denuded by the presence of
+ice sheets, is imposed as a boundary condition to the land sediment transport domain, by summing the 
+initial sediment cover in a denuded zone, and distributing it evenly into grid cells surrounding the
+denuded zone.  
 
 Ocean sediment deposition is governed by the constraint that we mustn't overfill the accomodation space (water depth).  Runoff from the continent is tabulated at coastal ocean grid cells, along with coastal CaCO3 depositon and whatever.  First the flux fields are smoothed into ocean grid points according to a diffusion constant.  Then the coastal grid cells are queried for whether they overflowed or not, and if they did, their mass is transferred inward, away from the coast.  This repeats until all the mass is accomodated. 
 
-CaCO3 deposition in the ocean is based on three mechanisms.  Pelagic deposition depends on latitude, water depth, and an ocean CO3 parameter.  CaCO3 rolls off of shallow waters surrounding continents into coastal points at rates that depend on latitude and ocean CO3.  When sea level floods continental crust, CaCO3 deposits more-or-less up to sea level, although attenuated in high latitudes.  The global total burial rate of CaCO3 is specified, and the ocean CO3 parameter is iterated to find the value which gives the right flux.  
-There is currently some bug in the CaCO3 budget.  
+CaCO3 deposition in the ocean is based on three mechanisms.  Pelagic deposition depends on latitude, water depth, and an ocean CO3 parameter.  CaCO3 rolls off of shallow waters surrounding continents into coastal points at rates that depend on latitude and ocean CO3.  When sea level floods continental crust, CaCO3 deposits more-or-less up to sea level, although attenuated in high latitudes.  The global total burial rate of CaCO3 is specified, and the ocean CO3 parameter is iterated to find the value which gives the right flux.  There is currently some bug in the CaCO3 budget.  
 
 A "CaO" fraction of sediment (alongside unreactive "clays" and CaCO3) is intended to represent the CO2-consuming weathering flux as fresh clays weather.  Continental dissolution fluxes of both CaCO3 and CaO are based on a rudimentary runoff field, and observed (simplified) runoff / dissolution flux relationships.  Ultimately it should be possible to constrain an atmospheric CO2 parameter based on the constraint that the weathering of exposed bedrock plus clay "CaO" must provide enough Ca to convert a CO2 degassing flux to the atmoshere into CaCO3. 
 
-The runoff applied to the weathering parameterization is an eyeball fit to the results of Baum et al. 2022.  A comparison of the fit to the original is shown as an animation output.  The fraction denuded is compared with the estimation from Holland's book that igneous and metamorphic comprise 25% of the Earth's surface. The CaO weathering fluxes chart shows the relative fluxes from hard rock vs. sediments, compared with the results of BLAG table 1 that 2/3 of "CaO" or calcium silicate weathering is primary rather than from clays.  Maps of sediment distribution are compared with present-day as one of the charts also; currently the model is still somewhat low.  Finally, the elevations are compared with the Scotese reconstruction as an animation of maps, and a time series plot of the mean elevation in a chart.  
+The runoff applied to the weathering parameterization is an eyeball fit to the results of Baum et al. 2022.  A comparison of the fit to the original is shown as an animation output.  The fraction denuded is compared with the estimation from Holland's book that igneous and metamorphic comprise 25% of the Earth's surface. The CaO weathering fluxes chart shows the relative fluxes from hard rock vs. sediments, compared with the results of BLAG table 1 that 2/3 of "CaO" or calcium silicate weathering is primary rather than from clays.  Maps of sediment distribution are compared with present-day as one of the charts also; currently the model is still somewhat low.  Finally, the elevations are compared with the Scotese reconstruction as an animation of maps, and a time series plot of the mean elevation in a chart. 
 
 The file main.jl contains the master plan and major operations, including running a time series, creating plots and animations from the simulation, and creating an html directory with copies of all the files.  The model can be invoked at a Julia command line as 
 
@@ -42,7 +47,9 @@ The world state is saved every time step for diagnostics and graphics.  Plates f
 
 The graphics are based on Makie and Plots, and can be used interactively at the command line as well as for making the saved output files. Makie is beautiful but sometimes has perspective problems or other inexplicible bugs.  On my apple M1 I have to use v0.4.7 ; more recent versions don't work.  Also Julia freezes at some point in making animations.  Hence two routines, animate_until_you_almost_puke(), which should be followed by restarting Julia, then doing animate_the_rest().
 
-It is worth using multiple cores by setting that preference in VSC or invoking the julia executable using --threads=8 (or however many).  
+It is worth using multiple cores by setting that preference in VSC or invoking the julia executable using --threads=16 (or however many).  Because cores in CPUs can multi-thread, it is worthwhile to set
+maybe twice as many threads as your CPU has cores.  
+
 
 
 
