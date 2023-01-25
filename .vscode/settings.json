@@ -1,4 +1,8 @@
 {
     "julia.executablePath": "/Applications/Julia-1.8.app/Contents/Resources/julia/bin/julia",
-    "julia.execution.codeInREPL": true
+    "julia.execution.codeInREPL": false,
+    "editor.quickSuggestions": {
+        "other": "off"
+    },
+    "julia.execution.saveOnEval": true
 }

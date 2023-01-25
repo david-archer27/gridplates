@@ -211,6 +211,7 @@ function land_sediment_fraction_transport( new_elevation_field,
             end
         end
     end
+    #=
     for ix in 1:nx
         for iy in 1:ny
             if world.geomorphology[ix,iy] == exposed_basement
@@ -221,7 +222,7 @@ function land_sediment_fraction_transport( new_elevation_field,
                 end
             end
         end
-    end 
+    end =#
     update_flux_totals!(combined_land_sediment_fraction_deposition_rates)
     return combined_land_sediment_fraction_deposition_rates
 end

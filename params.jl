@@ -74,23 +74,12 @@ world_diag_names = ["ocean_created_plate_area",
     "ocean_subduct_plate_thickness",
     "ocean_subduct_age_plate_area",
     "ocean_subduct_age_thickness",
-    #"ocean_subduct_sediment_thickness",
     "continent_subduct_plate_thickness",
-    #"continent_subduct_sediment_thickness",
     "ocean_2_continent_world_area",
     "continent_2_ocean_world_area",
     "continent_initialization_sediment_volume",
     "IDchange_plate_area",
-    "continent_orogenic_uplift_rate",   # set in outer time loop, uplift +, meters / Myr
-    "subduction_orogenic_uplift_rate",
-    "crust_erosion_rate",               # units m/Myr, calc on substep
-    "ice_sheet_crust_erosion_rate",               # units m/Myr, calc on substep
     "land_orogenic_Ca_source_rates",
-    #"crust_clay_source_rate",
-    #"aolean_clay_erosion_rate", 
-    #"aolean_clay_deposition_rate", 
-    #"land_orogenic_clay_flux", # in orogeny-neighboring land grid cells
-    #"land_CaCO3_dissolution_rate", # subaereal erosion
     "continental_CaCO3_deposition_rate", # when flooded
     "land_sediment_deposition_rate",
     "land_Q_runoff_field",
@@ -98,7 +87,6 @@ world_diag_names = ["ocean_created_plate_area",
     "seafloor_sediment_deposition_rate",
     "global_sediment_deposition_rate",
     "world_grid_sediment_change",
-    #"coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
     "coastal_CaCO3_flux",
     "pelagic_CaCO3_deposition_rate",
     "seafloor_delta_CO3"]
@@ -109,15 +97,12 @@ world_frac_diag_names = [
     "continent_2_ocean_sediment_fraction_leak",
     "ocean_2_continent_sediment_fraction_displaced",
     "continent_2_ocean_sediment_fraction_displaced",
-    "denuded_sediment_source_fraction_flux",
-    "denuded_land_boundary_fraction_flux",
-    "denuded_coastal_boundary_fraction_flux",
+    "denuded_crust_erosion_fraction_rate",
+    "ice_sheet_crust_erosion_fraction_rate",
+    "sediment_erosion_fraction_source",
+    "sediment_boundary_fraction_flux",
     "aolean_erosion_fraction_flux",
     "aolean_deposition_fraction_flux",
-    "crust_orogenic_fraction_flux",
-    "land_orogenic_fraction_flux",
-    "coastal_orogenic_fraction_flux",
-    "ice_sheet_erosion_fraction_flux",
     "land_sediment_fraction_dissolution_rate",
     "land_sediment_fraction_deposition_rate",
     "land_trapped_sediment_rate",
@@ -234,7 +219,7 @@ atmCO2_base = 400.0
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "friday_1_20"
+output_tag = "tuesday_1_24"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"

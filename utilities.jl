@@ -903,18 +903,14 @@ function clear_world_process_arrays()
 end
 function clear_geomorph_process_arrays()
     for idiag in [
-        "crust_erosion_rate",   
-        "ice_sheet_crust_erosion_rate",            # units m/Myr, calc on substep
-        #"crust_clay_source_rate",
-        #"aolean_clay_erosion_rate", 
-        #"aolean_clay_deposition_rate", 
-        #"land_orogenic_clay_flux", # in orogeny-neighboring land grid cells
-        #"land_CaCO3_dissolution_rate", # subaereal erosion
+        "land_orogenic_Ca_source_rates",
         "continental_CaCO3_deposition_rate", # when flooded
         "land_sediment_deposition_rate",
+        "land_Q_runoff_field",
+        "land_Q_runoff_field",
+        "land_sediment_weathering_index",
         "seafloor_sediment_deposition_rate",
         "global_sediment_deposition_rate",
-        #"coastal_orogenic_clay_flux", # in coastal ocean points, boundary fluxes
         "coastal_CaCO3_flux",
         "pelagic_CaCO3_deposition_rate",
         "seafloor_delta_CO3"]
@@ -922,11 +918,11 @@ function clear_geomorph_process_arrays()
         reset_diag(idiag)
     end
     for idiag in [
-        "denuded_land_boundary_fraction_flux",
-        "denuded_coastal_boundary_fraction_flux",
-        "crust_orogenic_fraction_flux",
-        "land_orogenic_fraction_flux",
-        "coastal_orogenic_fraction_flux",
+        "denuded_crust_erosion_fraction_rate",   
+        "ice_sheet_crust_erosion_fraction_rate", 
+        "sediment_erosion_fraction_source",
+        "aolean_erosion_fraction_flux",
+        "aolean_deposition_fraction_flux",
         "land_sediment_fraction_dissolution_rate",
         "land_sediment_fraction_deposition_rate",
         "land_trapped_sediment_rate",

@@ -50,6 +50,9 @@ function distribute_ocean_sediment_fluxes( incoming_fluxes )
         println("iterating ocean deposition ")
     end
     while n_overflows > 0 || overflow_flux > 0.
+        #if n_overflows < 1000
+        #    error("stopping")
+        #end
         submarine_mask = deepcopy(new_submarine_mask)
         #println("smooth in ",volume_field(overflow_fluxes[:,:,1]))
         smooth_sediment_fraction_deposition_rate!( overflow_fluxes, submarine_mask )
@@ -83,7 +86,7 @@ function distribute_ocean_sediment_fluxes( incoming_fluxes )
                 volume_field(new_overflow_fluxes[:,:,1]) + volume_field(new_overflow_fluxes[:,:,2]) ])=#
         end
         if enable_watch_ocean_offshore_transport
-            scene = plot_field( eq_mask( world.geomorphology,pelagic_seafloor ))
+            scene = plot_field( eq_mask( new_submarine_mask ))
             plot_add_continent_outlines!( scene )
             depositing = gt_mask( accumulating_depositing_fluxes[:,:,0], 0. )
             Makie.contour!(scene,xcoords,ycoords,depositing,color=:yellow)
@@ -426,10 +429,10 @@ function redistribute_trapped_land_fluxes_to_coast!( trapped_land_fluxes,
     #trapped_land_fluxes .= 0.
 end
 function find_nearest_fringe_point(ix,iy,blob_fringe_list)
-    #if length(blob_fringe_list) == 0
-    #    error("zero blob fringe list ",[ix,iy])
-    #    return ix,iy
-    #end
+    if length(blob_fringe_list) == 0
+        error("zero blob fringe list ",[ix,iy])
+        return ix,iy
+    end
     ixf = blob_fringe_list[1][1]; iyf = blob_fringe_list[1][2]
     min_distance = crow_flies(ycoords[iy],xcoords[ix],ycoords[iyf],xcoords[ixf])
     min_x = ixf; min_y = iyf

@@ -28,7 +28,19 @@ function mask_field_from_start_time_field( start_time_field )
     field_past = rotate_field_0_to_current_age(mask_field_time_0, start_time_field)
     return field_past
 end
-
+function rotate_field_0_to_age( field_at_time_0, age )
+    paleo_rotation_ID_field = read_plateIDs( age )
+    field_past = rotate_field_0_to_age( field_at_time_0, age,
+    paleo_rotation_ID_field )
+    return field_past
+end
+function rotate_field_0_to_age( field_at_time_0, age,
+    paleo_rotation_ID_field )
+    start_time_field = fill(1000.,nx,ny)
+    field_past = rotate_field_0_to_age( field_at_time_0, start_time_field, age,
+        paleo_rotation_ID_field )
+    return field_past
+end
 function rotate_field_0_to_age( field_at_time_0, start_time_field, age,
     paleo_rotation_ID_field )
     # inner core unreliant on world.machinery 
@@ -136,7 +148,7 @@ function get_ice_sheets()
     if file_name in file_list
         BSON.@load file_name paleo_temp_modern
         paleo_temp = rotate_field_0_to_current_age( paleo_temp_modern )
-        ice_sheet_mask = lt_mask(paleo_temp, -20) 
+        ice_sheet_mask = lt_mask(paleo_temp, -10) 
     end
     for ix in 1:nx
         for iy in 1:ny

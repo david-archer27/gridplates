@@ -55,7 +55,7 @@ function run_timeseries()
         step_everything()
         flush(log_IO)
         save_world()
-        time_interval = 50 # main_time_step * 10
+        time_interval = 20 # main_time_step * 10
         if floor(world.age/time_interval) == world.age/time_interval && 
             world.age >= time_interval
             save_plates()
@@ -64,7 +64,8 @@ function run_timeseries()
     end
     close(log_IO)
 end
-#world = read_world(300)
+#world = read_world(355)
 #plates = read_plates()
 #step_everything()
 #create_everything(300)
+#
