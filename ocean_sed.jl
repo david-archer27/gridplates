@@ -1,5 +1,5 @@
 
-function distribute_ocean_sediment_fluxes( incoming_fluxes )
+function distribute_ocean_sediment_fluxes( incoming_fluxes, submarine_mask )
     # accumulates seafloor_sediment_fraction_deposition_rate, seafloor_sediment_deposition_rate.
     # smoothes the sediment deposition fluxes, tests for sediment overflows,
     # designates the overflow points as nondepositing shelf and moves the 
@@ -14,7 +14,7 @@ function distribute_ocean_sediment_fluxes( incoming_fluxes )
 
     accumulating_depositing_fluxes = fill(0.,nx,ny,0:n_sediment_types)
  
-    submarine_mask = lt_mask(world.freeboard, 0.) # eq_mask(world.crust_type,ocean_crust)
+    #submarine_mask = lt_mask(world.freeboard, 0.) # eq_mask(world.crust_type,ocean_crust)
 
     #println(" influxes ", [ volume_field(incoming_fluxes[:,:,1]), 
     #    volume_field(incoming_fluxes[:,:,2]), volume_field(incoming_fluxes[:,:,3]),

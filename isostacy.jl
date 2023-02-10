@@ -1,8 +1,8 @@
 # Isostacy
 function isostacy()
-    (world.surface_elevation, world.freeboard) =
+    (world.freeboard) =
         isostacy( world.crust_thickness, world.crust_density,
-        world.sediment_thickness, world.elevation_offset )
+            world.sediment_thickness, world.elevation_offset )
 end
 function muddy_isostatic_freeboard( sediment_thickness_change )
     new_sediment_thickness = sediment_thickness_change .+ world.sediment_thickness
@@ -19,28 +19,40 @@ function isostacy_point(crust_thickness,crust_density,sediment_thickness,
     surface_boundary_thickness =
         crust_thickness + 
         sediment_thickness
-    equivalent_mantle_thickness =
-        surface_boundary_mass /
-        rho_mantle
-    surface_elevation = surface_boundary_thickness -
-        equivalent_mantle_thickness + elevation_offset
-    freeboard = surface_elevation -
-        world.sealevel + sealevel_base
-    return surface_elevation, freeboard
+    surface_boundary_density = surface_boundary_mass /
+        surface_boundary_thickness
+    root_over_foot_subaereally = surface_boundary_density /
+        ( rho_mantle - surface_boundary_density )
+    elevation_rel_mantle = surface_boundary_thickness /
+        ( 1. + root_over_foot_subaereally )
+    elevation_relative_cont_0 = elevation_rel_mantle - 
+        reference_elevation_cont_0
+    freeboard = elevation_relative_cont_0 -
+        world.sealevel 
+    if freeboard < 0
+        submerged_root_over_foot = 
+            ( surface_boundary_density - rho_seawater ) / 
+            ( rho_mantle - surface_boundary_density )
+        freeboard *= 
+            ( 1. + root_over_foot_subaereally ) / 
+            ( 1. + submerged_root_over_foot )
+    end
+    return freeboard
 end
 function isostacy(crust_thickness,crust_density,sediment_thickness,
     elevation_offset) # sets the elevation of the solid surface rel to mantle line
     # time independent
-    surface_elevation = fill(0.,nx,ny)
+    #surface_elevation = fill(0.,nx,ny)
     freeboard = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
-            surface_elevation[ix,iy], freeboard[ix,iy] = 
+            #surface_elevation[ix,iy], 
+            freeboard[ix,iy] = 
                 isostacy_point( crust_thickness[ix,iy], crust_density[ix,iy],
                     sediment_thickness[ix,iy], elevation_offset[ix,iy] )
         end
     end
-    return surface_elevation, freeboard
+    return freeboard
 end
 function hack_crust_thickness_to_elevation( ix,iy,target_elevation )
     # crust_thickness, elevation, crust_density, sediment_thickness, elevation_offset )

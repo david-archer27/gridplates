@@ -337,6 +337,7 @@ function fill_world_from_plates()
                     world.crust_thickness[iworld,jworld] = ocean_crust_h0
                     world.crust_density[iworld,jworld] = rho_ocean_crust
                     world.crust_composition[iworld,jworld] = mafic_crust
+                    # crust_lost_to_erosion already initialized as 0
                     world.geomorphology[iworld,jworld] = pelagic_seafloor
                     world.tectonics[iworld,jworld] = new_ocean_crust
                     world.sediment_thickness[iworld,jworld] = 0.
@@ -352,6 +353,8 @@ function fill_world_from_plates()
                         plate.crust_density[iplate,jplate]
                     world.crust_composition[iworld,jworld] =
                         plate.crust_composition[iplate,jplate]
+                    world.crust_lost_to_erosion[iworld,jworld] =
+                        plate.crust_lost_to_erosion[iplate,jplate]
                     world.geomorphology[iworld,jworld] = 
                         plate.geomorphology[iplate,jplate]
                     if plate.geomorphology[iplate,jplate] == exposed_basement
@@ -1075,7 +1078,7 @@ function find_plateID_list(plateIDmap)
 end
 
 # Utilities
-function apply_tectonics_changes_to_plates( uplift_rate )
+function apply_tectonics_changes_to_plates_retired( uplift_rate )
     uplift_meters = uplift_rate * # meters / Myr
         sub_time_step
 
@@ -1098,6 +1101,8 @@ function apply_tectonics_changes_to_plates( uplift_rate )
                             world.crust_density[iworld,jworld]   
                         plates[plateID].crust_composition[iplate, jplate] =
                             world.crust_composition[iworld,jworld] 
+                        plates[plateID].crust_lost_to_erosion[iplate, jplate] =
+                            world.crust_lost_to_erosion[iworld,jworld] 
                     end
                 end
             end
@@ -1105,6 +1110,9 @@ function apply_tectonics_changes_to_plates( uplift_rate )
     end
 end
 function apply_geomorphology_changes_to_plates()
+    # this completely reinterpolates the plate.  one wonders what the value of the plate grid is,
+    # would it be better to just apply interpolated changes to the plate grid, leave it alone?
+    # a project for another day
     Threads.@threads for plateID in world.plateIDlist
         plate = plates[plateID]
         for iplate in 1:nx
@@ -1121,6 +1129,8 @@ function apply_geomorphology_changes_to_plates()
                         world.crust_density[iworld,jworld]
                     plates[plateID].crust_composition[iplate,jplate] =
                         world.crust_composition[iworld,jworld]
+                    plates[plateID].crust_lost_to_erosion[iplate, jplate] =
+                        world.crust_lost_to_erosion[iworld,jworld] 
                     plates[plateID].geomorphology[iplate,jplate] =
                         world.geomorphology[iworld,jworld]
                     plates[plateID].tectonics[iplate,jplate] =

@@ -24,10 +24,11 @@ mutable struct world_struct
     continentID
     plateIDlist
     crust_type      # binary, as defined by GPlates 
-    crust_composition # 0. = 100% ultramafic, 1. = 100% felsic
     crust_age
     crust_thickness # pertaining to geomorphology
     crust_density
+    crust_composition # 0. = 100% ultramafic, 1. = 100% felsic
+    crust_lost_to_erosion
     geomorphology    # for sediment transport, subaereal or submarine
     tectonics
     sediment_thickness  # total thickness
@@ -35,7 +36,6 @@ mutable struct world_struct
     sediment_layer_thickness # x,y,time_bins, not used on land points
     sediment_layer_fractions  # x, y, sed type, time_bin
     elevation_offset
-    surface_elevation
     freeboard
     subducted_land_sediment_volumes # [land,ocean], not maps
     subducted_ocean_sediment_volumes
@@ -51,6 +51,7 @@ mutable struct plate_struct
     crust_thickness
     crust_density
     crust_composition
+    crust_lost_to_erosion
     geomorphology
     tectonics
     #potential_uplift 
@@ -79,6 +80,8 @@ world_diag_names = ["ocean_created_plate_area",
     "continent_2_ocean_world_area",
     "continent_initialization_sediment_volume",
     "IDchange_plate_area",
+    "target_elevation",
+    "crust_thickening_rate",
     "land_orogenic_Ca_source_rates",
     "continental_CaCO3_deposition_rate", # when flooded
     "land_sediment_deposition_rate",
@@ -105,6 +108,7 @@ world_frac_diag_names = [
     "aolean_deposition_fraction_flux",
     "land_sediment_fraction_dissolution_rate",
     "land_sediment_fraction_deposition_rate",
+    "land_sedient_fraction_erosion_rate",
     "land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
     "ocean_sediment_fraction_influx",
@@ -175,19 +179,6 @@ not_at_surface = 0
 new_plateID = 7 # set in copy_plate_point_plate12coord!
 deleted_plateID = 8
 
-# sediment types
-sediment_type_names = ["Clay", "CaCO3", "CaO"]
-clay_sediment = 1;
-CaCO3_sediment = 2;
-CaO_sediment = 3;
-n_sediment_types = length(sediment_type_names)
-initial_sediment_fractions = [0.975, 0.0, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
-orogenic_sediment_source_fractions = [0.95, 0.0, 0.05] # a bit higher for fresh clay?
-initial_land_sediment_thickness = 1.0;
-initial_ocean_sediment_thickness = 1.0;
-ultramafic_crust = 0.0; ultramafic_CaO_fraction = 0.5
-mafic_crust = 0.3;
-felsic_crust = 1.0; felsic_CaO_fraction = 0.1
 
 # Time 
 earliesttime = 540.0
@@ -219,7 +210,7 @@ atmCO2_base = 400.0
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "tuesday_1_24"
+output_tag = "thursday_2_9"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -277,14 +268,17 @@ enable_distribute_ocean_fluxes_diagnostics = true
 enable_watch_ocean_offshore_transport = false
 
 # geophysics parameters
-continent_crust_h0 = 16500.0;
-continent_crust_h0_max = 35000.0;
-ocean_crust_h0 = 4000.0
-rho_ocean_crust = 3.0;
-rho_continent_crust = 2.5;
-rho_mantle = 3.5;
-rho_sediment = 2.0;
-rho_seawater = 1.024;
+continent_crust_h0 = 35000.0
+ocean_crust_h0 = 12000.0
+rho_ocean_crust = 3.0
+rho_continent_crust = 2.75
+rho_mantle = 3.3
+rho_sediment = 2.5
+rho_seawater = 1.024
+ref_root_over_foot = rho_continent_crust /
+    ( rho_mantle - rho_continent_crust )
+reference_elevation_cont_0 = continent_crust_h0 / 
+    ( 1. + ref_root_over_foot )
 sediment_freeboard_expression = 1.0 - rho_sediment / rho_mantle
 crust_freeboard_expression = 1.0 - rho_continent_crust / rho_mantle
 mantle_T0 = 2000.0
@@ -305,19 +299,43 @@ orogenic_area_fraction_target = 0.1
 orogenic_area_width = 1.e6 # m
 orogenic_erosion_tau_apparent = mountain_max_altitude_target /
                                 max_uplift_rate_target # Myr
+ice_sheet_erosion_rate = 10.0 # mm/kyr = m/Myr from Jansen 2019
+# independent of altitude
 land_base_diffcoeff = max_uplift_rate_target *
                       orogenic_area_width * orogenic_area_fraction_target *
                       orogenic_area_width / (2.0 * mean_elevation_land_target) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 0.5
-orogenic_erosion_tau_apparent *= 2.0 # 1 # 5
-ice_sheet_erosion_tau_apparent = 2. * orogenic_erosion_tau_apparent
-orogenic_uplift_parameter *= 2.0 # 2.5 # 4. # 1.5 # back off because too much sed in ocean, elevation too high
+land_base_diffcoeff *= 0.2 # 0.5
+orogenic_erosion_tau_apparent *= 2.0
+ice_sheet_erosion_tau_apparent = 2.0 * orogenic_erosion_tau_apparent
+orogenic_uplift_parameter *= 2.0
 #subduction_orogeny_smooth_coeff = 0.
 
 specified_ocean_CaCO3_deposition_rate = 1.e15
 cap_carbonate_max_thickness = 30.0
 
+# sediment types
+sediment_type_names = ["Clay", "CaCO3", "CaO"]
+n_sediment_types = length(sediment_type_names)
+clay_sediment = 1; CaCO3_sediment = 2; CaO_sediment = 3
+initial_sediment_fractions = [0.975, 0.0, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
+orogenic_sediment_source_fractions = [0.95, 0.0, 0.05] # a bit higher for fresh clay?
+sediment_runoff_concentrations = [0., 1.6e-3, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
+initial_land_sediment_thickness = 1.0
+initial_ocean_sediment_thickness = 1.0
+# crust_composition grades
+ultramafic_crust = 0.0; mafic_crust = 0.3; felsic_crust = 1.0;
+
+ultramafic_CaO_fraction = 0.4 # Veizer 2014 Fig 13
+felsic_CaO_fraction = 0.2     #   ibid
+CaO_meters_to_CaCO3_meters = 1.  # not sure.
+# should reflect the non-Ca fraction that goes away as CAI -> 1
+# but also addition of C and O in the CaCO3
+# the Ca fluxes in the model are tracked as equivalent CaCO3 thickness
+runoff_Ca_conc_granite = 1.8e-4 # mol Ca / liter runoff
+# acid volcanic rocks, Luchuga-Crespo 2020
+runoff_Ca_conc_ultramafic = 4. * runoff_Ca_conc_granite 
+# Ibarra 2016 wants ~2.5 for basalt 
 runoff_tropical_max_rate = 1.0 # m / yr
 runoff_tropical_max_width = 12.0
 runoff_east_coast_penetration_scale = 3.e6
@@ -333,7 +351,7 @@ sediment_CaCO3_CO2uptake_coeff = 1.6
 sediment_CaO_CO2uptake_coeff = 0.6
 
 
-
+#=
 function create_orogenies()
     orogenic_events = Dict()
     orogenic_events["Pan_African"] =
@@ -372,7 +390,7 @@ function create_orogenies()
         create_orogenic_event("himalayan", 40.0, 0.0, 0.75)
     return orogenic_events
 end
-
+=#
 if enable_aolean_transport
     aolean_erosion_rate_constant = 1.e-2 # Myr
 else

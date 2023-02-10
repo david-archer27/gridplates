@@ -641,7 +641,7 @@ function aolean_transport()
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix,iy] > 0. &&
-                world.geomorphology[ix,iy] != exposed_basement
+                world.geomorphology[ix,iy] == sedimented_land
                 for i_sedtype in 1:n_sediment_types
                     aolean_erosion_rates[ix,iy,i_sedtype] = world.freeboard[ix,iy] *
                         world.sediment_surface_fractions[ix,iy,i_sedtype] *

@@ -300,9 +300,10 @@ function generate_runoff_map()
             end
         end
     end
-    return runoff_map # mm/sec
+    #runoff_map = runoff_map / 1.e3 * 3.14e7 # meters / yr
+    return runoff_map 
 
-#=    maritime_boost = fill(0.,nx,ny)
+    #=    maritime_boost = fill(0.,nx,ny)
     runoff_map = fill(0.,nx,ny) 
     delta_x_rainfall_penetration = 10. * delta_x[90]
     rain_shadow_slope_parameter = 100.
@@ -355,32 +356,119 @@ function generate_runoff_map()
     runoff_map .*= gt_mask(world.freeboard,0.)
     return runoff_map =#
 end
-
-
-function subaereal_sediment_dissolution( runoff_map )
-    land_sediment_dissolution_rates = fill(0.,nx,ny,0:n_sediment_types) # m3 / Myr
-    land_orogenic_Ca_source_rates = fill(0.,nx,ny) # eq CaCO3 m3 / Myr
-    #q_transect = generate_runoff_transect()
-    
+function exposed_basement_Ca_dissolution( runoff_map )
+    land_orogenic_Ca_source_rates = fill(0.0, nx, ny) # eq CaCO3 m3 / Myr
     for ix in 1:nx
         for iy in 1:ny
-            if world.freeboard[ix,iy] > 0.
-                if world.geomorphology[ix,iy] == exposed_basement
+            if world.geomorphology[ix,iy] == exposed_basement
+                river_conc = 
+                    world.crust_composition[ix,iy] * runoff_Ca_conc_granite + 
+                    ( 1. - world.crust_composition[ix,iy] ) * runoff_Ca_conc_ultramafic
+                land_orogenic_Ca_source_rates[ix,iy] = 
+                    runoff_map[ix, iy] * # m / yr 
+                    river_conc * 1.e3 * # mol Ca/m2 yr
+                    100. / # g CaCO3 / m2 yr 
+                    rho_sediment / # cm3 / m2 yr
+                    1.e6 * # m3 CaCO3 / m2 yr
+                    1.e6  # m3 CaCO3 / m2 Myr
+            end
+        end
+    end
+    return land_orogenic_Ca_source_rates
+end
+function subaereal_sediment_dissolution( runoff_map )
+    land_sediment_dissolution_rates = fill(0.,nx,ny,0:n_sediment_types) # m3 / Myr
+     #q_transect = generate_runoff_transect()
+    #iteration_fraction = 0.75
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.geomorphology[ix,iy] == sedimented_land
+                land_sediment_dissolution_rates[ix,iy,1:n_sediment_types] = 
+                    runoff_map[ix,iy] ./ # l / km2 s
+                    1.e3 ./ 1.e6 .* 3.14e7 .* # meters / year
+                    world.sediment_surface_fractions[ix,iy,:] .* 
+                    sediment_runoff_concentrations[:] .* 1.e3 .* # mol / m3 
+                    100. ./ rho_sediment .* 1.e6 # m3 / m3 
+                    1.e6 .* # meters dissolved / Myr
+                    CaO_meters_to_CaCO3_meters
+            end
+            for i_sedtype in 1:n_sediment_types
+                land_sediment_dissolution_rates[ix, iy, i_sedtype] =
+                    min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
+                        world.sediment_thickness[ix, iy] *
+                        world.sediment_surface_fractions[ix, iy, i_sedtype] /
+                        main_time_step * 0.1)
+                land_sediment_dissolution_rates[ix, iy, i_sedtype] =
+                    max(land_sediment_dissolution_rates[ix, iy, i_sedtype], 0.0)
+                land_sediment_dissolution_rates[ix, iy, 0] +=
+                    land_sediment_dissolution_rates[ix, iy, i_sedtype]
+            end
+        end
+    end
+               
+                  #=  
+                    runoff_Ca_conc_granite + 
+                        ( 1. - crust_composition[ix,iy] ) * runoff_Ca_conc_ultramafic
+                    dissolution_rate = runoff_map[ix,iy] * # m / yr 
+                        1.e6 * # m water / Myr 
+                        river_conc / # m CaO / Myr
+                        CaO_meters_to_CaCO3_meters # CaCO3 equiv for dissolved Ca
+                        
+
+                    total_erodable_flux = get_frac_diag(
+                        "denuded_crust_erosion_fraction_rate",CaO_sediment)[ix,iy]
+                    
+  
+                    #=phys = total_erodable_flux
+                    chem = 0.39 * phys^0.66 # Millot 2002 from Veizer 2014 eqn 5
+                    n_iterations = 0
+                    while abs( phys + chem - total_erodable_flux ) > 1.e-9 && 
+                        n_iterations < 100
+
+                        n_iterations += 1
+                        phys = iteration_fraction * (total_erodable_flux - chem ) +
+                            ( 1 - iteration_fraction ) * phys
+                        chem = 0.39 * phys^0.66 
+                        #println([phys,chem,phys+chem-total_erodable_flux])
+                    end=#
+                    
+                    # redo these based on millot 2002 for shield areas  
+                    # incorporate crust_composition by scaling
+                    # use crust_lost_to_erosion to capture initial volcanic,
+                    # then maturation, Veizer Fig 10
+
+    
                     land_orogenic_Ca_source_rates[ix,iy] = 
+                        chem * CaO_meters_to_CaCO3_meters
+                        #=
                         exposed_basement_CO2uptake_coeff *
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
                         runoff_map[ix,iy] * 1.E-3 * # mol / km2 s 
                         56. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
+                        =#
                 end
+
+
+
+
+
                 if world.geomorphology[ix,iy] == sedimented_land
-                    land_sediment_dissolution_rates[ix,iy,CaO_sediment] = 
+                    land_sediment_dissolution_rates[ix,iy,:] = 
+                        world.sediment_surface_fractions[ix,iy,:] .*
+                        runoff_map[ix,iy] .* 1.e-3 .* 3.14e7 # m / yr 
+
+
+
+
+
+
                         world.sediment_surface_fractions[ix,iy,CaO_sediment] /
                         initial_sediment_fractions[CaO_sediment] * 
                         sediment_CaO_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s
+                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s ??
                         56. * 3.14e7 * 1.e6 / # g / km2 Myr
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
@@ -406,8 +494,8 @@ function subaereal_sediment_dissolution( runoff_map )
                 end
             end
         end
-    end
-    return land_sediment_dissolution_rates, land_orogenic_Ca_source_rates
+    end =#
+    return land_sediment_dissolution_rates
 end
 function land_flux_limit( flux,ix,iy,i_sedtype )
     flux = 

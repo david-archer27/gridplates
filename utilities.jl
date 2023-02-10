@@ -11,6 +11,7 @@ function create_world(age)    # no plateIDs or numbers yet
     crust_thickness = fill(0.0, nx, ny) # pertaining to geomorphology
     crust_density = fill(0.0, nx, ny)
     crust_composition = fill(0.0, nx, ny)
+    crust_lost_to_erosion = fill(0.0, nx, ny)
     geomorph_map = fill(0, nx, ny)
     tectonics_map = fill(0, nx, ny)
     sediment_thickness = fill(0.0, nx, ny)
@@ -25,7 +26,7 @@ function create_world(age)    # no plateIDs or numbers yet
             initial_sediment_fractions[i_sedtype]
     end
     elevation_offset = fill(0.0, nx, ny)
-    surface_elevation = fill(0.0, nx, ny)
+    #surface_elevation = fill(0.0, nx, ny)
     freeboard = fill(0.0, nx, ny)
     subducted_land_sediment_volumes = [0.0, 0.0]
     subducted_ocean_sediment_volumes = [0.0, 0.0]
@@ -36,11 +37,12 @@ function create_world(age)    # no plateIDs or numbers yet
     n_frac_diags = length(world_frac_diag_names)
     frac_diags = fill(0.0, nx, ny, n_sediment_types, n_frac_diags)
     world = world_struct(age, sealevel, atmCO2, plateIDmap, continentID, plateIDlist, crust_type, crust_age,
-        crust_thickness, crust_density, crust_composition,
+        crust_thickness, crust_density, crust_composition,crust_lost_to_erosion,
         geomorph_map, tectonics_map,
         sediment_thickness, sediment_surface_fractions,
         sediment_layer_thickness, sediment_layer_fractions,
-        elevation_offset, surface_elevation, freeboard,
+        elevation_offset, #surface_elevation, 
+        freeboard,
         subducted_land_sediment_volumes, subducted_ocean_sediment_volumes,
         initial_ocean_sediment_inventories, initial_land_sediment_inventories,
         diags, frac_diags)
@@ -71,6 +73,7 @@ function create_blank_plate(plateID)
     crust_thickness = fill(0.0, nx, ny)
     crust_density = fill(0.0, nx, ny)
     crust_composition = fill(0.0, nx, ny)
+    crust_lost_to_erosion = fill(0.0, nx, ny)
     geomorphology = fill(0, nx, ny)
     tectonics_map = fill(0, nx, ny)
     #orogenic_uplift = fill(0,nx,ny)
@@ -91,7 +94,7 @@ function create_blank_plate(plateID)
     firstappearance = -1
     lastappearance = -1
     plate = plate_struct(plateID, crust_type, crust_age,
-        crust_thickness, crust_density, crust_composition,
+        crust_thickness, crust_density, crust_composition,crust_lost_to_erosion,
         geomorphology, tectonics_map,
         #orogenic_uplift,
         sediment_thickness, sediment_surface_fractions,
@@ -128,6 +131,11 @@ function initialize_plates()
     # nothing in plates.gridpoint_changes
     clear_world_process_arrays()
     # resets world.geomorphology, world.tectonics
+end
+function read_everything(age)
+    global world = read_world(age)
+    global plates = create_empty_plates()
+    initialize_plates()
 end
 function create_everything(age)
     global world = create_world(age)
@@ -370,11 +378,11 @@ end =#
 function update_world_continents_from_file()
     # sets new continents
     local new_crust_type
-    world.plateID = read_plateIDs() # wants new age in world.age
-    continentID = read_continentIDs()
+    world.plateID[:,:] = read_plateIDs() # wants new age in world.age
+    world.continentID[:,:] = read_continentIDs()
     for ix in 1:nx
         for iy in 1:ny
-            if continentID[ix, iy] > 0
+            if world.continentID[ix, iy] > 0
                 new_crust_type = continent_crust
             else
                 new_crust_type = ocean_crust
@@ -685,14 +693,16 @@ function clamp_field(field, value)
     end
     return newfield
 end
-function is_land()
+#=
+function is_continental_crust()
     is_land_field = eq_mask(world.crust_type, continent_crust)
     return is_land_field
 end
-function is_ocean()
+function is_ocean_crust()
     is_ocean_field = eq_mask(world.crust_type, ocean_crust)
     return is_ocean_field
 end
+=#
 function eq_mask(field, value)
     newfield = fill(0, nx, ny)
     #Threads.@threads

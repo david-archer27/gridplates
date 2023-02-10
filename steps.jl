@@ -20,6 +20,7 @@ function step_everything(  ) # rebuilds the world at the new time
     end
 
     world.sealevel = get_sealevel( world.age ) # - 400. # for setting a sea-level-typical initial for debugging
+    # println("hacked sea level")
     logging_println("Sea level ", world.sealevel)
     world.elevation_offset .= 0.
 
@@ -435,6 +436,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     # continent and subduction uplift rates into *_orogenic_uplift_rate diags
     scotese_target_elevation = get_scotese_mountains()
+    isostacy()
     uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
     isostacy()
 
@@ -473,15 +475,19 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     diffusive_mask = eq_mask(world.geomorphology, sedimented_land)
     orogenic_mask = eq_mask(world.geomorphology, exposed_basement)
+    ice_sheet_mask = eq_mask(world.geomorphology, ice_sheet_covered)
     #nondepositing_shelf_mask = eq_mask(world.geomorphology,ocean_shelf)
-    submerged_mask = lt_mask(world.freeboard, 0.0)
-    if enable_land_runoff == false
-        submerged_mask .= 0
+    submarine_mask = lt_mask(world.freeboard, 0.0)
+    for ix in 1:nx
+        for iy in 1:ny
+            if ice_sheet_mask[ix, iy] == 1
+                submarine_mask[ix, iy] = 0
+            end
+        end
     end
-    subaereal_mask = (1 .- submerged_mask)
-    #depositing_ocean_mask = submerged_mask .* 
-    #    eq_mask(world.crust_type,ocean_crust)# .* 
-    #    eq_mask(world.geomorphology,pelagic_seafloor)
+    if enable_land_runoff == false
+        submarine_mask .= 0
+    end
 
     original_elevation_field = world.freeboard
     new_elevation_field = fill(0.0, nx, ny)
@@ -523,12 +529,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
                 sediment_erosion_source_at_origin .+ denuded_sediment_source_at_origin,
                 denuded_mask)
 
-        land_diffusive_boundary_source_fields = sediment_boundary_influx .* subaereal_mask
+        land_diffusive_boundary_source_fields = sediment_boundary_influx .* diffusive_mask
         update_flux_totals!(land_diffusive_boundary_source_fields)
- 
+
         new_elevation_field, land_sediment_deposition_rate_field =
             land_bulk_sediment_transport(original_elevation_field,
-                diffusive_mask, land_diffusive_boundary_source_fields[:, :, 0], submerged_mask)
+                diffusive_mask, land_diffusive_boundary_source_fields[:, :, 0], submarine_mask)
 
         n_denuded = check_for_bedrock_exposure(land_sediment_deposition_rate_field)
         n_denuded_tot = get_maskfield_census(eq_mask(world.geomorphology, exposed_basement))
@@ -562,13 +568,13 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         end
         balance = 0.0
         if enable_step_geomorph_diagnostics
-            bulk_source_flux = volume_field( land_diffusive_boundary_source_fields[:, :, 0] )
+            bulk_source_flux = volume_field(land_diffusive_boundary_source_fields[:, :, 0])
             bulk_deposition_flux = volume_field(land_sediment_deposition_rate_field)
             bulk_denuded_flux = volume_field(denuded_sediment_source_at_origin[:, :, 0])
             # note this includes the flux to the ocean, because it has to compensate the
             # negative land deposition rates
             bulk_runoff_flux = volume_field(land_bulk_runoff_fluxes(new_elevation_field,
-                diffusive_mask, submerged_mask))
+                diffusive_mask, submarine_mask))
             bulk_cont2ocn_scatter = 0.0
             for i_sedtype in 1:n_sediment_types
                 bulk_cont2ocn_scatter += volume_field(get_frac_diag(
@@ -580,9 +586,10 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         else
             logging_println("    denuded ", n_denuded_tot)
         end
-
-        uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
-        isostacy()
+        
+        #isostacy()
+        #uplift_scotese_mountains_by_crust_thickening(scotese_target_elevation)
+        #isostacy()
 
         need_another_loop = false
         if n_denuded > 0
@@ -602,7 +609,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     set_frac_diag("denuded_crust_erosion_fraction_rate", denuded_erosion_rate_at_origin[:, :, 1:end])
     set_frac_diag("ice_sheet_crust_erosion_fraction_rate", ice_sheet_erosion_rate_at_origin[:, :, 1:end])
     set_frac_diag("sediment_erosion_fraction_source", sediment_erosion_source_at_origin[:, :, 1:end])
-    set_frac_diag("sediment_boundary_fraction_flux", sediment_boundary_influx )
+    set_frac_diag("sediment_boundary_fraction_flux", sediment_boundary_influx)
     set_diag("land_sediment_deposition_rate", land_sediment_deposition_rate_field)
 
     area_denuded = volume_field(eq_mask(world.geomorphology, exposed_basement))
@@ -615,12 +622,12 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     land_sediment_fraction_deposition_rate_fields =
         land_sediment_fraction_transport(new_elevation_field,
             land_sediment_deposition_rate_field,
-            diffusive_mask, sediment_boundary_influx, submerged_mask)
+            diffusive_mask, sediment_boundary_influx, submarine_mask)
 
     for ix in 1:nx
         for iy in 1:ny
             if world.geomorphology[ix, iy] == exposed_basement ||
-                world.geomorphology[ix, iy] == ice_sheet_covered
+               world.geomorphology[ix, iy] == ice_sheet_covered
 
                 for i_sedtype in 1:n_sediment_types
                     land_sediment_fraction_deposition_rate_fields[ix, iy, i_sedtype] =
@@ -629,22 +636,31 @@ function step_geomorph() # requires previous run with tectonics to fill world di
                 end
             end
         end
-    end 
+    end
 
     new_sediment_thickness, new_sediment_surface_fractions =
         apply_continent_crust_sediment_fluxes(land_sediment_fraction_deposition_rate_fields)
     world.sediment_thickness[:, :] = new_sediment_thickness
     world.sediment_surface_fractions[:, :, :] = new_sediment_surface_fractions
-    world.crust_thickness .-= (denuded_erosion_rate_at_origin[:, :, 0] .+
-                               ice_sheet_erosion_rate_at_origin[:, :, 0]) .* main_time_step
+    eroded_crust = (denuded_erosion_rate_at_origin[:, :, 0] .+
+                    ice_sheet_erosion_rate_at_origin[:, :, 0]) .* main_time_step
+    world.crust_thickness .- eroded_crust
+    world.crust_lost_to_erosion + -eroded_crust
 
     set_frac_diag("land_sediment_fraction_deposition_rate",
         land_sediment_fraction_deposition_rate_fields)
 
+    for i_sedtype in 1:n_sediment_types
+        set_frac_diag("land_sedient_fraction_erosion_rate", i_sedtype,
+            land_sediment_fraction_deposition_rate_fields[:, :, i_sedtype] .*
+            le_mask(land_sediment_fraction_deposition_rate_fields[:, :, i_sedtype], 0.0)
+        )
+    end
+
     coastal_sediment_fraction_runoff_flux_fields =
         land_fraction_runoff_fluxes(new_elevation_field,
             land_sediment_fraction_deposition_rate_fields,
-            diffusive_mask, submerged_mask)
+            diffusive_mask, submarine_mask)
     set_frac_diag("coastal_sediment_fraction_runoff_flux",
         coastal_sediment_fraction_runoff_flux_fields)
 
@@ -659,20 +675,20 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     update_flux_totals!(demoted_land_sediment)
 
     submerged_slop = (uplifted_ocean_sediment .+ demoted_land_sediment) .*
-                     (submerged_mask)
+                     (submarine_mask)
     landed_slop = (uplifted_ocean_sediment .+ demoted_land_sediment) .*
-                  (1 .- submerged_mask)
+                  (1 .- submarine_mask)
 
     redeposited_landed =
         distribute_fluxes_uniformly_outside_boundary(
-            landed_slop, (1 .- submerged_mask))
+            landed_slop, (1 .- submarine_mask))
     # an ocean point turns into continent, the sediment is
     # distributed into the same submerged coastal grid points
     # as the coastal runoff, adjacent to the diffusive land regions
 
     redeposited_submerged =
         distribute_fluxes_uniformly_inside_boundary(
-            submerged_slop, submerged_mask)
+            submerged_slop, submarine_mask)
     # a land point suddenly finds itself oceanic.  its sediment
     # is also distributed in the coastal ocean grid cells. 
 
@@ -705,10 +721,13 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     runoff_map = generate_runoff_map()
     set_diag("land_Q_runoff_field", runoff_map)
-    land_sediment_fraction_dissolution_rate_fields, land_orogenic_Ca_source_rates =
-        subaereal_sediment_dissolution(runoff_map)
+    land_sediment_fraction_dissolution_rate_fields =
+        subaereal_sediment_dissolution(runoff_map) 
+    #println("hacked sed diss")
     set_frac_diag("land_sediment_fraction_dissolution_rate",
         land_sediment_fraction_dissolution_rate_fields)
+    land_orogenic_Ca_source_rates = 
+        exposed_basement_Ca_dissolution( runoff_map )
     set_diag("land_orogenic_Ca_source_rates", land_orogenic_Ca_source_rates)
 
     land_sediment_weathering_index = fill(0.0, nx, ny)
@@ -716,9 +735,10 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     #CaO_calcite_free = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
-            if world.sediment_thickness[ix, iy] > 0.0
-                if world.sediment_surface_fractions[ix, iy, CaO_sediment] +
-                   world.sediment_surface_fractions[ix, iy, clay_sediment] > 0.0
+            if world.sediment_thickness[ix, iy] > 1.e-6
+                if world.sediment_surface_fractions[ix, iy, CaO_sediment] > 0.0 &&
+                    world.sediment_surface_fractions[ix, iy, clay_sediment] > 0.0
+
                     CaO_CaCO3_free[ix, iy] = world.sediment_surface_fractions[ix, iy, CaO_sediment] /
                                              (world.sediment_surface_fractions[ix, iy, CaO_sediment]
                                               +
@@ -791,10 +811,11 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         get_frac_diag("denuded_coastal_boundary_fraction_flux",CaCO3_sediment)
     CaO_dep =#
     incoming_fluxes = fill(0.0, nx, ny, 0:n_sediment_types)
-    incoming_fluxes[:, :, 1:end] = get_frac_diag("coastal_sediment_fraction_runoff_flux") .+
-                                   ( get_frac_diag("sediment_boundary_fraction_flux") .* submerged_mask ) .+
-                                   #get_frac_diag("coastal_orogenic_fraction_flux") .+
-                                   get_frac_diag("aolean_deposition_fraction_flux")
+    incoming_fluxes[:, :, 1:end] =
+        get_frac_diag("coastal_sediment_fraction_runoff_flux") .+
+        (get_frac_diag("sediment_boundary_fraction_flux") .* submarine_mask) .+
+        #get_frac_diag("coastal_orogenic_fraction_flux") .+
+        get_frac_diag("aolean_deposition_fraction_flux")
     incoming_fluxes[:, :, CaCO3_sediment] .+=
         get_diag("coastal_CaCO3_flux") .+
         get_diag("pelagic_CaCO3_deposition_rate")
@@ -820,7 +841,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
 
     println("distributing ocean fluxes")
-    accumulating_depositing_fluxes = distribute_ocean_sediment_fluxes(incoming_fluxes)
+    accumulating_depositing_fluxes = distribute_ocean_sediment_fluxes(incoming_fluxes, submarine_mask)
 
 
     set_diag("seafloor_sediment_deposition_rate",
@@ -883,7 +904,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         cont2ocean_fluxes = fill(0.0, 0:n_sediment_types)
         ocean2cont_fluxes = fill(0.0, 0:n_sediment_types)
         land_erosion_source_fluxes[1:end] = volume_fields(
-            get_frac_diag("sediment_boundary_fraction_flux") .* subaereal_mask )
+            get_frac_diag("sediment_boundary_fraction_flux") .* diffusive_mask)
         #orogen_fluxes[CaO_sediment] = volume_field(get_diag("land_orogenic_CaO_flux"))
         dissolution_fluxes[1:end] = volume_fields(get_frac_diag("land_sediment_fraction_dissolution_rate"))
         aolean_erosion_fluxes[1:end] = volume_fields(get_frac_diag("aolean_erosion_fraction_flux"))
@@ -895,9 +916,9 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         transport_deposition_fluxes[:] = total_deposition_fluxes[:]
         #transport_deposition_fluxes[CaCO3_sediment] -= continent_CaCO3_deposition_flux
         denuded_fluxes_to_land[1:n_sediment_types] =
-            volume_fields(get_frac_diag("sediment_boundary_fraction_flux") .* subaereal_mask )
+            volume_fields(get_frac_diag("sediment_boundary_fraction_flux") .* diffusive_mask)
         denuded_fluxes_to_coast[1:n_sediment_types] =
-            volume_fields(get_frac_diag("sediment_boundary_fraction_flux") .* submerged_mask )
+            volume_fields(get_frac_diag("sediment_boundary_fraction_flux") .* submarine_mask)
         cont2ocean_fluxes[1:n_sediment_types] = volume_fields(demoted_land_sediment[:, :, 1:n_sediment_types])
         ocean2cont_fluxes[1:n_sediment_types] = volume_fields(uplifted_ocean_sediment[:, :, 1:n_sediment_types])
         # note that this includes stuff to be deposited in the ocean, because the
@@ -921,7 +942,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
         mass_balances = change_rate .+ dissolution_fluxes .- total_deposition_fluxes
         flux_balances = land_source_fluxes .- transport_deposition_fluxes .- runoff_fluxes .-
-                        denuded_fluxes_to_coast .+ dissolution_fluxes
+                        .- denuded_fluxes_to_coast .+ dissolution_fluxes
 
         logging_println("")
         logging_println("land budget init ", incoming_land_fraction_inventories)
@@ -942,7 +963,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         logging_println("tot flx to ocean ", runoff_fluxes .+ aolean_erosion_fluxes .+
                                              cont2ocean_fluxes .+ ocean2cont_fluxes)
         logging_println("        mass bal ", mass_balances)
-        logging_println("        flux bal ", flux_balances)
+        #logging_println("        flux bal ", flux_balances)
 
         # underwater on both continent and ocean crust
         new_ocean_sed_inventories = world_sediment_inventories()
@@ -952,7 +973,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
         ocean_erosional_sources = fill(0.0, 0:n_sediment_types)
         ocean_erosional_sources[1:end] = volume_fields(
-            get_frac_diag("sediment_boundary_fraction_flux") .* submerged_mask )
+            get_frac_diag("sediment_boundary_fraction_flux") .* submarine_mask)
 
         aolean_deposition = fill(0.0, 0:n_sediment_types)
         aolean_deposition[1:end] = volume_fields(get_frac_diag("aolean_deposition_fraction_flux"))
