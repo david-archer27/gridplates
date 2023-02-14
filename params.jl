@@ -108,7 +108,7 @@ world_frac_diag_names = [
     "aolean_deposition_fraction_flux",
     "land_sediment_fraction_dissolution_rate",
     "land_sediment_fraction_deposition_rate",
-    "land_sedient_fraction_erosion_rate",
+    "land_sediment_fraction_erosion_rate",
     "land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
     "ocean_sediment_fraction_influx",
@@ -139,7 +139,7 @@ for iy in 1:ny
     n_equiv_boxes[iy] = Int(floor(delta_y / delta_x[iy]))
 end
 shelf_depth_clastics = -100.0;
-shelf_depth_CaCO3 = -0.1;
+shelf_depth_CaCO3 = -10.0;
 
 log_IO = 0 # dummy file handle for log output file
 
@@ -199,8 +199,12 @@ geo_interval_names = ["Cambrian", "Ordovician", "Silurian", "Devonian",
     "Paleocene", "Eocene", "Oligocene", "Miocene", "Pliocene", "Pleistocene"]
 sealevel_timepoints = [550.0, 500.0, 450.0, 250.0, 75.0, 0.0]
 sealevel_values = [0.0, 0.0, 200.0, 0.0, 250.0, 0.0]
-sealevel_base = -4714.7 - 856.0 + # isostatic drawdown from 2 km sediment
-                500.0 # mean elevation we want of crust with 2 km of sediment
+
+#sealevel_timepoints = [550.0, 500.0, 480.0, 250.0, 75.0, 0.0]
+#sealevel_values = [0.0, 0.0, 80.0, 0.0, 250.0, 0.0]
+
+#sealevel_base = -4714.7 - 856.0 + # isostatic drawdown from 2 km sediment
+#                500.0 # mean elevation we want of crust with 2 km of sediment
 atmCO2_timepoints = [550.0, 0.0]
 atmCO2_values = [400.0, 400.0]
 atmCO2_base = 400.0
@@ -210,7 +214,7 @@ atmCO2_base = 400.0
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "thursday_2_9"
+output_tag = "tuesday_2_14"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -268,18 +272,20 @@ enable_distribute_ocean_fluxes_diagnostics = true
 enable_watch_ocean_offshore_transport = false
 
 # geophysics parameters
-continent_crust_h0 = 35000.0
+continent_crust_h0 = 30000.0  # 35000.
 ocean_crust_h0 = 12000.0
-rho_ocean_crust = 3.0
+rho_ocean_crust = 2.75
 rho_continent_crust = 2.75
 rho_mantle = 3.3
 rho_sediment = 2.5
 rho_seawater = 1.024
 ref_root_over_foot = rho_continent_crust /
-    ( rho_mantle - rho_continent_crust )
-reference_elevation_cont_0 = continent_crust_h0 / 
-    ( 1. + ref_root_over_foot )
-sediment_freeboard_expression = 1.0 - rho_sediment / rho_mantle
+                     (rho_mantle - rho_continent_crust)
+reference_elevation_cont_0 = continent_crust_h0 /
+                             (1.0 + ref_root_over_foot)
+subaereal_sediment_freeboard_expression = 1.0 - rho_sediment / rho_mantle
+submarine_sediment_freeboard_expression = 1.0 - (rho_sediment - rho_seawater) /
+                                                (rho_mantle - rho_seawater)
 crust_freeboard_expression = 1.0 - rho_continent_crust / rho_mantle
 mantle_T0 = 2000.0
 ocean_T0 = 0.0
@@ -293,22 +299,26 @@ subduction_orogeny_parameter = 7500.0
 subduction_orogeny_smooth_coeff = 1.e4
 subduction_orogeny_hor_offset = 5 * delta_y
 mountain_max_altitude_target = 10.e3 # m
-max_uplift_rate_target = 600.0 # m / Myr
-mean_elevation_land_target = 800.0 # m
-orogenic_area_fraction_target = 0.1
-orogenic_area_width = 1.e6 # m
-orogenic_erosion_tau_apparent = mountain_max_altitude_target /
-                                max_uplift_rate_target # Myr
+#max_uplift_rate_target = 600.0 # m / Myr
+#mean_elevation_land_target = 800.0 # m
+#orogenic_area_fraction_target = 0.1
+#orogenic_area_width = 1.e6 # m
+#orogenic_erosion_tau_apparent = mountain_max_altitude_target /
+#                                max_uplift_rate_target # Myr
 ice_sheet_erosion_rate = 10.0 # mm/kyr = m/Myr from Jansen 2019
 # independent of altitude
-land_base_diffcoeff = max_uplift_rate_target *
-                      orogenic_area_width * orogenic_area_fraction_target *
-                      orogenic_area_width / (2.0 * mean_elevation_land_target) / 1.e6 # m/yr
+#land_base_diffcoeff = max_uplift_rate_target *
+#                      orogenic_area_width * orogenic_area_fraction_target *
+#                      orogenic_area_width / (2.0 * mean_elevation_land_target) / 1.e6 # m/yr
 
-land_base_diffcoeff *= 0.2 # 0.5
-orogenic_erosion_tau_apparent *= 2.0
+#land_base_diffcoeff *= 0.2 # 0.5
+
+land_base_diffcoeff = 3750. # 7500.0
+
+#orogenic_erosion_tau_apparent *= 2.0
+orogenic_erosion_tau_apparent = 33.3
 ice_sheet_erosion_tau_apparent = 2.0 * orogenic_erosion_tau_apparent
-orogenic_uplift_parameter *= 2.0
+#orogenic_uplift_parameter *= 2.0
 #subduction_orogeny_smooth_coeff = 0.
 
 specified_ocean_CaCO3_deposition_rate = 1.e15
@@ -317,24 +327,31 @@ cap_carbonate_max_thickness = 30.0
 # sediment types
 sediment_type_names = ["Clay", "CaCO3", "CaO"]
 n_sediment_types = length(sediment_type_names)
-clay_sediment = 1; CaCO3_sediment = 2; CaO_sediment = 3
+clay_sediment = 1;
+CaCO3_sediment = 2;
+CaO_sediment = 3;
 initial_sediment_fractions = [0.975, 0.0, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
 orogenic_sediment_source_fractions = [0.95, 0.0, 0.05] # a bit higher for fresh clay?
-sediment_runoff_concentrations = [0., 1.6e-3, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
+sediment_runoff_concentrations = [0.0, 1.6e-3, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
+
+#sediment_runoff_concentrations .*= 0.0
+
 initial_land_sediment_thickness = 1.0
 initial_ocean_sediment_thickness = 1.0
 # crust_composition grades
-ultramafic_crust = 0.0; mafic_crust = 0.3; felsic_crust = 1.0;
+ultramafic_crust = 0.0;
+mafic_crust = 0.3;
+felsic_crust = 1.0;
 
 ultramafic_CaO_fraction = 0.4 # Veizer 2014 Fig 13
 felsic_CaO_fraction = 0.2     #   ibid
-CaO_meters_to_CaCO3_meters = 1.  # not sure.
+CaO_meters_to_CaCO3_meters = 1.0  # not sure.
 # should reflect the non-Ca fraction that goes away as CAI -> 1
 # but also addition of C and O in the CaCO3
 # the Ca fluxes in the model are tracked as equivalent CaCO3 thickness
 runoff_Ca_conc_granite = 1.8e-4 # mol Ca / liter runoff
 # acid volcanic rocks, Luchuga-Crespo 2020
-runoff_Ca_conc_ultramafic = 4. * runoff_Ca_conc_granite 
+runoff_Ca_conc_ultramafic = 4.0 * runoff_Ca_conc_granite
 # Ibarra 2016 wants ~2.5 for basalt 
 runoff_tropical_max_rate = 1.0 # m / yr
 runoff_tropical_max_width = 12.0
@@ -398,9 +415,9 @@ else
 end
 
 #land_CaCO3_dissolving_altitude = 10. # meters
-land_sediment_dissolution_rate_constants = [0.0, 0.01, 0.01] # per Myr
-land_sediment_dissolution_2xCO2 = [0.0, 0.0, 0.0]
-global_CaCO3_net_burial_flux = 1.e15 # today fluxes
+#land_sediment_dissolution_rate_constants = [0.0, 0.01, 0.01] # per Myr
+#land_sediment_dissolution_2xCO2 = [0.0, 0.0, 0.0]
+#global_CaCO3_net_burial_flux = 1.e15 # today fluxes
 seafloor_base_diffcoeff = 3.e5 # m2 / yr
 
 
