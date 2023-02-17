@@ -19,7 +19,7 @@ function land_bulk_sediment_transport( original_elevation_field, diffusive_mask,
                 if subaereal_blob[ix,iy] == 1
                     land_sediment_deposition_rates[ix,iy] = 
                         ( altered_elevation_field[ix,iy] - original_elevation_field[ix,iy] ) /
-                        main_time_step / sediment_freeboard_expression
+                        main_time_step / subaereal_sediment_freeboard_expression
                 end
             end
         end 
@@ -49,8 +49,8 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
     end
     if list_pos_filled == 1
         ix = list_x[1]; iy = list_y[1]
-        h_diffcoeffs_scaled = get_horizontal_diffcoeff(land_base_diffcoeff,iy) .* sediment_freeboard_expression
-        v_diffcoeffs_scaled = get_vertical_diffcoeff(land_base_diffcoeff,iy) .* sediment_freeboard_expression
+        h_diffcoeffs_scaled = get_horizontal_diffcoeff(land_base_diffcoeff,iy) .* subaereal_sediment_freeboard_expression
+        v_diffcoeffs_scaled = get_vertical_diffcoeff(land_base_diffcoeff,iy) .* subaereal_sediment_freeboard_expression
         A = Float64[ 1. ]
         #runoff_loss = 0.
         if ocean_sink[ix_left(ix),iy] == 1 
@@ -76,7 +76,7 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
         R = Float64[ altered_elevation_field[ix,iy] +
             bulk_sediment_source[ix,iy] * # meters/Myr
             main_time_step * # meters / step
-            sediment_freeboard_expression ]
+            subaereal_sediment_freeboard_expression ]
         new_elevation = A \ R
         altered_elevation_field[ix,iy] = new_elevation
     else # more than one point
@@ -100,8 +100,8 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
         R = Float64[]; original_elevation_list = []
         for i_pos = 1:list_pos_filled
             ix = list_x[i_pos]; iy = list_y[i_pos]
-                h_diffcoeffs_scaled = get_horizontal_diffcoeff(land_base_diffcoeff,iy) .* sediment_freeboard_expression
-                v_diffcoeffs_scaled = get_vertical_diffcoeff(land_base_diffcoeff,iy) .* sediment_freeboard_expression
+                h_diffcoeffs_scaled = get_horizontal_diffcoeff(land_base_diffcoeff,iy) .* subaereal_sediment_freeboard_expression
+                v_diffcoeffs_scaled = get_vertical_diffcoeff(land_base_diffcoeff,iy) .* subaereal_sediment_freeboard_expression
             push!(R, altered_elevation_field[ix,iy])
             push!(original_elevation_list, altered_elevation_field[ix,iy])
             A[i_pos,i_pos] = 1.
@@ -138,7 +138,7 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
                 end
             end
             R[end] += bulk_sediment_source[ix,iy] * # meters / Myr
-                main_time_step * sediment_freeboard_expression # meters
+                main_time_step * subaereal_sediment_freeboard_expression # meters
         end
 
         new_elevation_list = lu(A) \ R
@@ -152,6 +152,30 @@ function land_blob_bulk_sediment_transport!( altered_elevation_field,
         end
     end # diffuse or no
 end
+function check_for_bedrock_or_CaCO3_exposure(
+    land_sediment_deposition_rate_field, original_diffusing_sediment_thickness)
+    # sets world.geomorphology to exclude for next pass,
+    # puts the spoil into the nearest denuded_land_boundary_fraction_flux,
+    # records it in denuded_sediment_source_fraction_flux
+    # called in a loop to calculate the bulk fluxes, but the fractions denuded
+    # have to be preserved 
+    n_denuded = 0
+    sediment_deposition_meters =
+        land_sediment_deposition_rate_field .* main_time_step
+    new_total_sediment_thickness = original_diffusing_sediment_thickness .+
+        sediment_deposition_meters
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.geomorphology[ix, iy] == sedimented_land &&
+               new_total_sediment_thickness[ix, iy] < 0.0
+                #println("found ",[ix,iy])
+                n_denuded += 1
+                world.geomorphology[ix, iy] = exposed_basement
+            end
+        end
+    end
+    return n_denuded
+end
 function check_for_bedrock_exposure( land_sediment_deposition_rate_field )
     # sets world.geomorphology to exclude for next pass,
     # puts the spoil into the nearest denuded_land_boundary_fraction_flux,
@@ -160,7 +184,7 @@ function check_for_bedrock_exposure( land_sediment_deposition_rate_field )
     # have to be preserved 
     n_denuded = 0
     sediment_deposition_meters = 
-    land_sediment_deposition_rate_field .* main_time_step
+        land_sediment_deposition_rate_field .* main_time_step
     total_sediment_thickness = world.sediment_thickness
     new_total_sediment_thickness = total_sediment_thickness .+ 
         sediment_deposition_meters 
@@ -176,16 +200,17 @@ function check_for_bedrock_exposure( land_sediment_deposition_rate_field )
     end
     return n_denuded
 end
-function land_sediment_fraction_transport( new_elevation_field, 
-    land_sediment_deposition_rate_field,
-    diffusive_mask, 
+function land_sediment_fraction_transport_except_CaCO3( new_elevation_field, 
+    land_sediment_deposition_rate_field, diffusive_mask, 
     sediment_source_fields, ocean_sink )
     # sets land_sediment_fraction_deposition_rate on land areas
     combined_land_sediment_fraction_deposition_rates = 
         fill(0.,nx,ny,0:n_sediment_types)
     sediment_deposition_meters = 
         land_sediment_deposition_rate_field .* main_time_step
-    old_total_sediment_thickness = world.sediment_thickness
+    old_total_sediment_thickness = deepcopy( world.sediment_thickness )
+     .* 
+        ( 1. - world.sediment_surface_fractions[:,:,CaCO3_sediment] )
     new_total_sediment_thickness = old_total_sediment_thickness .+
         sediment_deposition_meters
     covered_diffusive_mask = diffusive_mask .- le_mask( new_total_sediment_thickness, 0. )
@@ -226,8 +251,59 @@ function land_sediment_fraction_transport( new_elevation_field,
     update_flux_totals!(combined_land_sediment_fraction_deposition_rates)
     return combined_land_sediment_fraction_deposition_rates
 end
+function land_sediment_fraction_transport(new_elevation_field,
+    land_sediment_deposition_rate_field, original_diffusing_sediment_thickness, 
+    diffusive_mask,
+    sediment_source_fields, ocean_sink)
+    # sets land_sediment_fraction_deposition_rate on land areas
+    combined_land_sediment_fraction_deposition_rates =
+        fill(0.0, nx, ny, 0:n_sediment_types)
+    sediment_deposition_meters =
+        land_sediment_deposition_rate_field .* main_time_step
+    new_total_sediment_thickness = original_diffusing_sediment_thickness .+
+                                   sediment_deposition_meters
+    covered_diffusive_mask = diffusive_mask .- le_mask(new_total_sediment_thickness, 0.0)
+    subaereal_blobs = get_blobs(covered_diffusive_mask)
+
+    Threads.@threads for i_blob in 1:length(subaereal_blobs)
+        #println("beginning ",i_blob)
+        subaereal_blob = subaereal_blobs[i_blob]
+        land_sediment_fraction_deposition_rates =
+            land_area_sediment_fraction_transport(
+                new_elevation_field, land_sediment_deposition_rate_field, 
+                original_diffusing_sediment_thickness, 
+                subaereal_blob, sediment_source_fields, ocean_sink)
+        for ix in 1:nx
+            for iy in 1:ny
+                if subaereal_blob[ix, iy] == 1
+                    for i_sedtype in 1:n_sediment_types
+                        if land_sediment_fraction_deposition_rates[ix, iy, i_sedtype] != 0.0
+                            combined_land_sediment_fraction_deposition_rates[ix, iy, i_sedtype] =
+                                land_sediment_fraction_deposition_rates[ix, iy, i_sedtype]
+                        end
+                    end
+                end
+            end
+        end
+    end
+    #=
+    for ix in 1:nx
+        for iy in 1:ny
+            if world.geomorphology[ix,iy] == exposed_basement
+                for i_sedtype in 1:n_sediment_types
+                    combined_land_sediment_fraction_deposition_rates[ix,iy,i_sedtype] =
+                        - world.sediment_thickness[ix,iy] * 
+                        world.sediment_surface_fractions[ix,iy,i_sedtype] / main_time_step
+                end
+            end
+        end
+    end =#
+    update_flux_totals!(combined_land_sediment_fraction_deposition_rates)
+    return combined_land_sediment_fraction_deposition_rates
+end
 function land_area_sediment_fraction_transport( 
     new_elevation_field, land_sediment_deposition_rate_field,
+    original_diffusing_sediment_thickness, 
     subaereal_blob, sediment_source_fields, ocean_sink ) 
     # sets land_sediment_fraction_deposition_rate on land points
     # fractions combined in one call so they can share the 
@@ -257,11 +333,11 @@ function land_area_sediment_fraction_transport(
     land_sediment_fraction_deposition_rates = fill(0.,nx,ny,n_sediment_types)
     sediment_deposition_meters = 
         land_sediment_deposition_rate_field .* main_time_step
-    old_total_sediment_thickness = world.sediment_thickness
-    new_total_sediment_thickness = old_total_sediment_thickness .+
+
+    new_total_sediment_thickness = original_diffusing_sediment_thickness .+
         sediment_deposition_meters
     old_column_fraction_inventory = fill(0.,nx,ny,n_sediment_types)
-    for i_sedtype in 1:n_sediment_types
+    for i_sedtype in first_land_transported_sediment:n_sediment_types
         old_column_fraction_inventory[:,:,i_sedtype] = 
             world.sediment_thickness .*
             world.sediment_surface_fractions[:,:,i_sedtype]
@@ -307,7 +383,7 @@ function land_area_sediment_fraction_transport(
                     new_elevation_field[ix,iy] / new_total_sediment_thickness[ix,iy]
                 end
             end
-            for i_sedtype in 1:n_sediment_types
+            for i_sedtype in first_land_transported_sediment:n_sediment_types
 
                 #=  old_inventory = world.sediment_thickness[ix,iy,current_time_bin()] * 
                         world.sediment_fractions[ix,iy,i_sedtype,current_time_bin()]
@@ -445,7 +521,7 @@ function land_area_sediment_fraction_transport(
 
         lu_A = lu(A)
 
-        for i_sedtype in 1:n_sediment_types 
+        for i_sedtype in first_land_transported_sediment:n_sediment_types 
             old_inventory_list = []
             R = Float64[]; 
             for i_pos = 1:list_pos_filled
@@ -744,7 +820,7 @@ function diffusive_flux_cell(elevation,ix,iy,domain,direction)
     end
     d_elevation = elevation[ix,iy] - neighbor_elevation
     dhdt = diffcoeff * d_elevation / main_time_step
-    flux = dhdt / sediment_freeboard_expression
+    flux = dhdt / subaereal_sediment_freeboard_expression
     return dhdt
 end
 function get_vertical_diffcoeff(base_diffcoeff,iy)

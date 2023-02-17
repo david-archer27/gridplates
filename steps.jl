@@ -19,8 +19,16 @@ function step_everything(  ) # rebuilds the world at the new time
         after_tectonics_world_inventories = world_sediment_inventories(  )
     end
 
-    world.sealevel = get_sealevel( world.age ) # - 400. # for setting a sea-level-typical initial for debugging
-    # println("hacked sea level")
+    world.sealevel = get_sealevel( world.age ) #+ 10. # for setting a sea-level-typical initial for debugging
+    
+    
+    
+    #println()
+    #println("hacked sea level")
+    #println()
+
+
+
     logging_println("Sea level ", world.sealevel)
     world.elevation_offset .= 0.
 
@@ -119,8 +127,8 @@ function step_everything(  ) # rebuilds the world at the new time
         subaereal_mask = gt_mask(world.freeboard,0.)
         maxix,maxiy = highest_xy_field(world.freeboard)
         max_freeboard = world.freeboard[maxix,maxiy]
-        mean_land_freeboard = field_mean(world.freeboard .* subaereal_mask)
-        mean_ocean_depth = field_mean(world.freeboard .* (1 .- subaereal_mask))
+        mean_land_freeboard = field_mean(world.freeboard, subaereal_mask)
+        mean_ocean_depth = field_mean(world.freeboard, (1 .- subaereal_mask))
         logging_println()
         logging_println("max, mean elevations ",[field_max(world.freeboard), mean_land_freeboard,mean_ocean_depth])
         #=c_uplift = get_diag("continent_orogenic_uplift_rate") 
@@ -201,6 +209,10 @@ function step_tectonics(  )
             substep_update_ID_plate_inventories = global_plate_sediment_inventories()
             logging_println("          update IDs ", substep_update_ID_plate_inventories)
         end
+
+        #for (plateID,plate) in plates
+        #    plate.crust_age .+= gt_mask( plate.crust_type, 0 )
+        #end
 
     end
 
@@ -506,6 +518,11 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     sediment_boundary_influx = fill(0.0, nx, ny, 0:n_sediment_types)
     land_diffusive_boundary_source_fields = fill(0.0, nx, ny, 0:n_sediment_types)
     land_sediment_deposition_rate_field = fill(0.0, nx, ny)
+    original_diffusing_sediment_thickness = fill(0.0, nx, ny)
+    for i_sedtype in first_land_transported_sediment:n_sediment_types
+        original_diffusing_sediment_thickness .+= world.sediment_thickness .* 
+        world.sediment_surface_fractions[:,:,i_sedtype]
+    end
 
     while need_another_loop == true
         n_loops_already += 1
@@ -536,7 +553,8 @@ function step_geomorph() # requires previous run with tectonics to fill world di
             land_bulk_sediment_transport(original_elevation_field,
                 diffusive_mask, land_diffusive_boundary_source_fields[:, :, 0], submarine_mask)
 
-        n_denuded = check_for_bedrock_exposure(land_sediment_deposition_rate_field)
+        n_denuded = check_for_bedrock_or_CaCO3_exposure( 
+            land_sediment_deposition_rate_field, original_diffusing_sediment_thickness )
         n_denuded_tot = get_maskfield_census(eq_mask(world.geomorphology, exposed_basement))
         if enable_watch_denuding_landscape
             for ix in 1:nx
@@ -621,7 +639,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
 
     land_sediment_fraction_deposition_rate_fields =
         land_sediment_fraction_transport(new_elevation_field,
-            land_sediment_deposition_rate_field,
+            land_sediment_deposition_rate_field, original_diffusing_sediment_thickness, 
             diffusive_mask, sediment_boundary_influx, submarine_mask)
 
     for ix in 1:nx
@@ -651,7 +669,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
         land_sediment_fraction_deposition_rate_fields)
 
     for i_sedtype in 1:n_sediment_types
-        set_frac_diag("land_sedient_fraction_erosion_rate", i_sedtype,
+        set_frac_diag("land_sediment_fraction_erosion_rate", i_sedtype,
             land_sediment_fraction_deposition_rate_fields[:, :, i_sedtype] .*
             le_mask(land_sediment_fraction_deposition_rate_fields[:, :, i_sedtype], 0.0)
         )
@@ -756,7 +774,7 @@ function step_geomorph() # requires previous run with tectonics to fill world di
     logging_println("Ocean Sedimentation")
     #println("CaCO3 system")
 
-    ocean_thermal_boundary_layer()
+    #ocean_thermal_boundary_layer()
 
     continental_CaCO3_dissolution_rate = volume_field(
         land_sediment_fraction_dissolution_rate_fields[:, :, CaCO3_sediment])

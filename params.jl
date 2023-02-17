@@ -67,7 +67,9 @@ mutable struct plate_struct
     lastappearance
 end
 # diagnostics variable system
-world_diag_names = ["ocean_created_plate_area",
+world_diag_names = [
+    "lithosphere_thickness",
+    "ocean_created_plate_area",
     "continent_2_ocean_plate_area",
     "continent_2_ocean_sediment_leak",
     "continent_created_plate_area",
@@ -205,16 +207,16 @@ sealevel_values = [0.0, 0.0, 200.0, 0.0, 250.0, 0.0]
 
 #sealevel_base = -4714.7 - 856.0 + # isostatic drawdown from 2 km sediment
 #                500.0 # mean elevation we want of crust with 2 km of sediment
-atmCO2_timepoints = [550.0, 0.0]
-atmCO2_values = [400.0, 400.0]
-atmCO2_base = 400.0
+#atmCO2_timepoints = [550.0, 0.0]
+#atmCO2_values = [400.0, 400.0]
+#atmCO2_base = 400.0
 
 #sealevel_timepoints = [100.,50.,0.]
 #sealevel_values = [0.,2.,0.]
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "tuesday_2_14"
+output_tag = "friday_2_16"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -273,22 +275,25 @@ enable_watch_ocean_offshore_transport = false
 
 # geophysics parameters
 continent_crust_h0 = 30000.0  # 35000.
-ocean_crust_h0 = 12000.0
-rho_ocean_crust = 2.75
-rho_continent_crust = 2.75
-rho_mantle = 3.3
-rho_sediment = 2.5
+ocean_crust_h0 = 7000.0
+rho_ocean_crust = 3.0
+rho_continent_crust = 2.8
+rho_lithosphere = 3.375
+rho_mantle = 3.35
+rho_sediment = 2.7
 rho_seawater = 1.024
-ref_root_over_foot = rho_continent_crust /
-                     (rho_mantle - rho_continent_crust)
-reference_elevation_cont_0 = continent_crust_h0 /
-                             (1.0 + ref_root_over_foot)
+
+#ref_root_over_foot = rho_continent_crust /
+#                     (rho_mantle - rho_continent_crust)
+#reference_elevation_cont_0 = continent_crust_h0 /
+#                             (1.0 + ref_root_over_foot)
 subaereal_sediment_freeboard_expression = 1.0 - rho_sediment / rho_mantle
 submarine_sediment_freeboard_expression = 1.0 - (rho_sediment - rho_seawater) /
                                                 (rho_mantle - rho_seawater)
 crust_freeboard_expression = 1.0 - rho_continent_crust / rho_mantle
-mantle_T0 = 2000.0
-ocean_T0 = 0.0
+continent_lithosphere_thickness = 135.e3
+#mantle_T0 = 2000.0
+#ocean_T0 = 0.0
 
 # geomorphology parameters
 orogeny_smooth_coeff = 1000.0
@@ -325,14 +330,13 @@ specified_ocean_CaCO3_deposition_rate = 1.e15
 cap_carbonate_max_thickness = 30.0
 
 # sediment types
-sediment_type_names = ["Clay", "CaCO3", "CaO"]
+sediment_type_names = ["CaCO3", "Clay", "CaO"]
+CaCO3_sediment = 1; clay_sediment = 2; CaO_sediment = 3
 n_sediment_types = length(sediment_type_names)
-clay_sediment = 1;
-CaCO3_sediment = 2;
-CaO_sediment = 3;
-initial_sediment_fractions = [0.975, 0.0, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
-orogenic_sediment_source_fractions = [0.95, 0.0, 0.05] # a bit higher for fresh clay?
-sediment_runoff_concentrations = [0.0, 1.6e-3, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
+first_land_transported_sediment = clay_sediment
+initial_sediment_fractions = [0., 0.975, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
+orogenic_sediment_source_fractions = [0.0, 0.95, 0.05] # a bit higher for fresh clay?
+sediment_runoff_concentrations = [1.6e-3, 0.0, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
 
 #sediment_runoff_concentrations .*= 0.0
 

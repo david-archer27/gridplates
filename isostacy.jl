@@ -1,5 +1,94 @@
 # Isostacy
-function isostacy()
+function isostacy( )
+    lithosphere_thickness = fill(0.,nx,ny)
+    new_freeboard = fill(0.,nx,ny)
+    for ix in 1:nx
+        for iy in 1:ny
+            new_freeboard[ix,iy], lithosphere_thickness[ix,iy] = 
+                isostacy( 
+                    world.crust_type[ix,iy], 
+                    world.crust_thickness[ix,iy],
+                    world.crust_density[ix,iy], 
+                    world.sediment_thickness[ix,iy],
+                    world.crust_age[ix,iy])
+        end
+    end
+    world.freeboard[:,:] = new_freeboard[:,:]
+    set_diag("lithosphere_thickness",lithosphere_thickness)
+end
+function isostacy( crust_type, crust_thickness, crust_density, 
+    sediment_thickness, crust_age )
+
+    column_thickness_ref = continent_crust_h0 + continent_lithosphere_thickness
+    column_mass_ref = continent_crust_h0 * rho_continent_crust +
+        continent_lithosphere_thickness * rho_lithosphere
+    column_ref_mean_density = column_mass_ref / column_thickness_ref
+    column_mass_ref_in_water = ( column_ref_mean_density - rho_seawater ) *
+        column_thickness_ref
+    elevation = 0; lithosphere_thickness = 0;
+    if crust_type == continent_crust
+        #tot_cap_thickness = crust_thickness +
+        #    sediment_thickness
+        lithosphere_thickness = continent_lithosphere_thickness
+        column_thickness = crust_thickness +
+            sediment_thickness + lithosphere_thickness
+        column_mass = crust_thickness * crust_density +
+            lithosphere_thickness * rho_lithosphere +
+            sediment_thickness * rho_sediment
+        aestheno_thickness_to_ref = 
+            ( column_mass_ref - column_mass) / 
+            rho_mantle
+        thickness_relative_to_ref = column_thickness +
+            aestheno_thickness_to_ref
+        elevation = thickness_relative_to_ref - 
+            column_thickness_ref - 
+            world.sealevel
+        if elevation < 0.
+            column_mean_density = column_mass / column_thickness
+            column_mass_in_water = ( column_mean_density - rho_seawater ) * 
+                column_thickness
+            aestheno_thickness_to_ref = 
+                ( column_mass_ref_in_water - column_mass_in_water ) / 
+                ( rho_mantle - rho_seawater )
+            thickness_relative_to_ref = column_thickness + 
+                aestheno_thickness_to_ref
+            elevation = thickness_relative_to_ref - 
+                column_thickness_ref - 
+                world.sealevel
+        end
+    end
+    if crust_type == ocean_crust
+        t_diff = 2.55e7 # m2 / Myr
+        thermal_boundary_thickness = 2. * sqrt( t_diff * crust_age )
+        lithosphere_thickness = thermal_boundary_thickness - crust_thickness
+        lithosphere_thickness = max(0.,lithosphere_thickness)
+        lithosphere_thickness = min(125.e3,lithosphere_thickness)
+        column_thickness = crust_thickness + 
+            sediment_thickness + lithosphere_thickness 
+        column_mass = crust_thickness * crust_density +
+            sediment_thickness * rho_sediment +
+            lithosphere_thickness * rho_lithosphere
+        column_mean_density = column_mass / column_thickness
+        column_mass_in_water = 
+            crust_thickness * ( crust_density - rho_seawater ) +
+            sediment_thickness * ( rho_sediment - rho_seawater ) +
+            lithosphere_thickness * ( rho_lithosphere - rho_seawater )
+        aestheno_thickness_to_ref = 
+            ( column_mass_ref_in_water - column_mass_in_water ) / 
+            ( rho_mantle - rho_seawater )
+        thickness_relative_to_ref = column_thickness + 
+            aestheno_thickness_to_ref
+        elevation = thickness_relative_to_ref - 
+            column_thickness_ref - 
+            world.sealevel
+    end
+    return elevation, lithosphere_thickness
+end
+
+
+
+
+function isostacy_orig()
     (world.freeboard) =
         isostacy( world.crust_thickness, world.crust_density,
             world.sediment_thickness, world.elevation_offset )
@@ -11,7 +100,9 @@ function muddy_isostatic_freeboard( sediment_thickness_change )
         world.elevation_offset)
     return freeboard
 end
-function isostacy_point(crust_thickness,crust_density,sediment_thickness,
+#function isostacy_point(crust_thickness,crust_density,sediment_thickness,
+#    crust_age,)
+function isostacy_point_old(crust_thickness,crust_density,sediment_thickness,
     elevation_offset)
     surface_boundary_mass =
         crust_thickness * crust_density +
@@ -96,6 +187,7 @@ end
         world.crust_thickness,world.crust_density)
     return elevation_offset
 end=#
+
 function ocean_thermal_boundary_layer( ) # crust_age,crust_thickness,crust_density) # sets world.elevation_offset etc for ocn
     # elevation_offset could also be used to tweak continents up and down
     # time independent, just based on crust age

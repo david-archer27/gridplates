@@ -1152,7 +1152,7 @@ function field_RMS(field)
     valueRMS = sqrt(valuetot / areatot)
     return valueRMS
 end
-function field_mean(field, applies_map=fill(1, nx, ny))
+#=function field_mean(field, applies_map=fill(1, nx, ny))
     areatot = 0.0
     valuetot = 0.0
     for ix in 1:nx
@@ -1165,7 +1165,7 @@ function field_mean(field, applies_map=fill(1, nx, ny))
     end
     valueavg = valuetot / areatot
     return valueavg
-end
+end=#
 function field_max(field)
     maxval = -1.e10
     for ix in 1:nx

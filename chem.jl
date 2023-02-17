@@ -81,8 +81,9 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
             for iy in 1:ny
                 if world.crust_type[ix,iy] == continent_crust
                     if world.freeboard[ix,iy] < shelf_depth_CaCO3
+                        #error(ix," ",iy)
                         accom_meters = ( shelf_depth_CaCO3 - world.freeboard[ix,iy] ) /
-                            sediment_freeboard_expression
+                            submarine_sediment_freeboard_expression
                         max_rate = accom_meters / main_time_step * CaCO3_latitude_scale( iy )
                         rate_limit = get_coastal_CaCO3_deposition_rate( ocean_CO3, iy )
                         shallow_rates[ix,iy] = min( max_rate, rate_limit )
@@ -396,6 +397,11 @@ function subaereal_sediment_dissolution( runoff_map )
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
                         world.sediment_thickness[ix, iy] *
+                        world.sediment_surface_fractions[ix, iy, i_sedtype] /
+                        main_time_step * 0.1)
+                land_sediment_dissolution_rates[ix, iy, i_sedtype] =
+                    min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
+                        world.freeboard[ix, iy] *
                         world.sediment_surface_fractions[ix, iy, i_sedtype] /
                         main_time_step * 0.1)
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =

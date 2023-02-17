@@ -208,7 +208,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
     potential_freeboard = world.freeboard .+ 
         ( incoming_fluxes[:,:,0] .+ 
         already_depositing_fluxes[:,:,0] ) .* 
-        main_time_step .* sediment_freeboard_expression 
+        main_time_step .* submarine_sediment_freeboard_expression 
     # 
     for ix in 1:nx
         for iy in 1:ny
@@ -233,7 +233,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                                 =#
                         incoming_meters = incoming_fluxes[ix,iy,0] * main_time_step
                         excess_meters = ( potential_freeboard[ix,iy] - shelf_depth_clastics ) /
-                            sediment_freeboard_expression
+                            submarine_sediment_freeboard_expression
                         meters_exported = min( excess_meters, incoming_meters )
                         meters_deposited_locally = incoming_meters - meters_exported
                         fractions_exported = []; sum_check = 0.
