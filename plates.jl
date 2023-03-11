@@ -341,12 +341,13 @@ function fill_world_from_plates()
                     world.geomorphology[iworld,jworld] = pelagic_seafloor
                     world.tectonics[iworld,jworld] = new_ocean_crust
                     world.sediment_thickness[iworld,jworld] = 0.
-                    world.sediment_surface_fractions[iworld,jworld,:] .= initial_sediment_fractions
-                    world.sediment_layer_thickness[iworld,jworld,:] .= 0.
-                    world.sediment_layer_fractions[iworld,jworld,:,:] .= 0.
+                    world.sediment_fractions[iworld,jworld,:] .= 0.
+                    #world.sediment_layer_thickness[iworld,jworld,:] .= 0.
+                    #world.sediment_layer_fractions[iworld,jworld,:,:] .= 0.
                 else
                     world.crust_type[iworld,jworld] = plate.crust_type[iplate,jplate]
-                    world.crust_age[iworld,jworld] = plate.crust_age[iplate,jplate]
+                    world.crust_age[iworld,jworld] = plate.crust_age[iplate,jplate] +
+                        main_time_step
                     world.crust_thickness[iworld,jworld] =
                         plate.crust_thickness[iplate,jplate]
                     world.crust_density[iworld,jworld] =
@@ -363,16 +364,17 @@ function fill_world_from_plates()
 
                     world.sediment_thickness[iworld,jworld] = 
                         plate.sediment_thickness[iplate,jplate]                        
-                    world.sediment_surface_fractions[iworld,jworld,:] .=
-                        plate.sediment_surface_fractions[iplate,jplate,:]
-                    world.sediment_layer_thickness[iworld,jworld,:] .= 
-                        plate.sediment_layer_thickness[iplate,jplate,:]                        
-                    world.sediment_layer_fractions[iworld,jworld,:,:] .=
-                        plate.sediment_layer_fractions[iplate,jplate,:,:]
+                    world.sediment_fractions[iworld,jworld,:] .=
+                        plate.sediment_fractions[iplate,jplate,:]
+                    #world.sediment_inventories[iworld,jworld,:] .= 
+                    #    plate.sediment_inventories[iplate,jplate,:]                        
+                    #world.sediment_layer_fractions[iworld,jworld,:,:] .=
+                    #    plate.sediment_layer_fractions[iplate,jplate,:,:]
                 end
             end
         end
     end
+    update_sediment_inventories_from_fractions()
 end
 function initial_mask_plate!(plate)
     for iplate in 1:nx
@@ -389,20 +391,24 @@ function initial_mask_plate!(plate)
                     plate.geomorphology[iplate,jplate] = pelagic_seafloor
                     plate.sediment_thickness[iplate,jplate] = 
                         world.sediment_thickness[iworld,jworld]
-                    plate.sediment_layer_thickness[iplate,jplate,:] = 
-                        world.sediment_layer_thickness[iworld,jworld,:]
-                    plate.sediment_surface_fractions[iplate,jplate,:] = 
-                        world.sediment_surface_fractions[iworld,jworld,:]
-                    plate.sediment_layer_fractions[iplate,jplate,:,:] = 
-                        world.sediment_layer_fractions[iworld,jworld,:,:]
+                    #plate.sediment_layer_thickness[iplate,jplate,:] = 
+                    #    world.sediment_layer_thickness[iworld,jworld,:]
+                    plate.sediment_fractions[iplate,jplate,:] = 
+                        world.sediment_fractions[iworld,jworld,:]
+                    #plate.sediment_inventories[iplate,jplate,:] = 
+                    #    world.sediment_inventories[iworld,jworld,:]
+                    #plate.sediment_layer_fractions[iplate,jplate,:,:] = 
+                    #    world.sediment_layer_fractions[iworld,jworld,:,:]
                 else # must be a continent
                     plate.crust_density[iplate,jplate] = rho_continent_crust
                     plate.crust_composition[iplate,jplate] = felsic_crust
                     plate.geomorphology[iplate,jplate] = sedimented_land
                     plate.sediment_thickness[iplate,jplate] = 
                         world.sediment_thickness[iworld,jworld]
-                    plate.sediment_surface_fractions[iplate,jplate,:] .=  
-                        world.sediment_surface_fractions[iworld,jworld,:]
+                    plate.sediment_fractions[iplate,jplate,:] .=  
+                        world.sediment_fractions[iworld,jworld,:]
+                    #plate.sediment_inventories[iplate,jplate,:] = 
+                    #    world.sediment_inventories[iworld,jworld,:]
                 end
             else # world.plateID[iworld,jworld] != plate.plateID
                 delete_plate_point!(plate,iplate,jplate)
@@ -432,10 +438,11 @@ function remask_plate!( plate, subduction_footprint )
     cropped_rotated_sediment_thickness = fill(0.,nx,ny)
     subducted_sediment_thickness = fill(0.,nx,ny)
 
-    rotated_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
-    cropped_rotated_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
-    subducted_sediment_surface_fractions = fill(0.,nx,ny,n_sediment_types)
+    rotated_sediment_fractions = fill(0.,nx,ny,n_sediment_types)
+    cropped_rotated_sediment_fractions = fill(0.,nx,ny,n_sediment_types)
+    subducted_sediment_fractions = fill(0.,nx,ny,n_sediment_types)
 
+    #=
     rotated_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
     cropped_rotated_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
     subducted_sediment_layer_thickness = fill(0.,nx,ny,n_sediment_time_bins)
@@ -443,6 +450,7 @@ function remask_plate!( plate, subduction_footprint )
     rotated_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
     cropped_rotated_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
     subducted_sediment_layer_fractions = fill(0.,nx,ny,n_sediment_types,n_sediment_time_bins)
+    =#
 
     initial_plate_crust_areas = [0.,0.] # land, ocean
     rotated_plate_crust_areas = [0.,0.]
@@ -471,35 +479,35 @@ function remask_plate!( plate, subduction_footprint )
             rotated_crust_type[iworld, jworld] = plate.crust_type[iplate,jplate]
             rotated_sediment_thickness[iworld, jworld] = 
                 plate.sediment_thickness[iplate,jplate]
-            rotated_sediment_surface_fractions[iworld, jworld,:] = 
-                plate.sediment_surface_fractions[iplate,jplate,:]
-            rotated_sediment_layer_thickness[iworld, jworld,:] = 
-                plate.sediment_layer_thickness[iplate,jplate,:]
-            rotated_sediment_layer_fractions[iworld, jworld,:,:] = 
-                plate.sediment_layer_fractions[iplate,jplate,:,:]
+            rotated_sediment_fractions[iworld, jworld,:] = 
+                plate.sediment_fractions[iplate,jplate,:]
+            #rotated_sediment_layer_thickness[iworld, jworld,:] = 
+            #    plate.sediment_layer_thickness[iplate,jplate,:]
+            #rotated_sediment_layer_fractions[iworld, jworld,:,:] = 
+            #    plate.sediment_layer_fractions[iplate,jplate,:,:]
             # entire world grids dividing plate points into surface exposed vs not
             if world.plateID[iworld,jworld] == plate.plateID
                 cropped_rotated_crust_type[iworld, jworld] = 
                     rotated_crust_type[iworld, jworld]
                 cropped_rotated_sediment_thickness[iworld, jworld] = 
                     rotated_sediment_thickness[iworld, jworld]
-                cropped_rotated_sediment_surface_fractions[iworld, jworld,:] = 
-                    rotated_sediment_surface_fractions[iworld, jworld,:]
-                cropped_rotated_sediment_layer_thickness[iworld, jworld,:] = 
+                cropped_rotated_sediment_fractions[iworld, jworld,:] = 
+                    rotated_sediment_fractions[iworld, jworld,:]
+                #=cropped_rotated_sediment_layer_thickness[iworld, jworld,:] = 
                     rotated_sediment_layer_thickness[iworld, jworld,:]
                 cropped_rotated_sediment_layer_fractions[iworld, jworld,:,:] = 
-                    rotated_sediment_layer_fractions[iworld, jworld,:,:]
+                    rotated_sediment_layer_fractions[iworld, jworld,:,:]=#
             else  
                 subducted_crust_type[iworld, jworld] = 
                     rotated_crust_type[iworld, jworld]
                 subducted_sediment_thickness[iworld, jworld] = 
                     rotated_sediment_thickness[iworld, jworld]
-                subducted_sediment_surface_fractions[iworld, jworld,:] = 
-                    rotated_sediment_surface_fractions[iworld, jworld,:]
-                subducted_sediment_layer_thickness[iworld, jworld,:] = 
+                subducted_sediment_fractions[iworld, jworld,:] = 
+                    rotated_sediment_fractions[iworld, jworld,:]
+                #=subducted_sediment_layer_thickness[iworld, jworld,:] = 
                     rotated_sediment_layer_thickness[iworld, jworld,:]
                 subducted_sediment_layer_fractions[iworld, jworld,:,:] = 
-                    rotated_sediment_layer_fractions[iworld, jworld,:,:]
+                    rotated_sediment_layer_fractions[iworld, jworld,:,:]=#
             end
         end
     end
@@ -510,13 +518,13 @@ function remask_plate!( plate, subduction_footprint )
         subducted_land_sediment_volumes[i_sedtype] = 
             volume_field( subducted_sediment_thickness .* 
                 eq_mask( subducted_crust_type, continent_crust ) .* 
-                subducted_sediment_surface_fractions[:,:,i_sedtype] )
-        for i_bin in 1:n_sediment_time_bins
-            subducted_ocean_sediment_volumes[i_sedtype] += 
-                volume_field( subducted_sediment_layer_thickness[:,:,i_bin] .* 
-                    eq_mask( subducted_crust_type, ocean_crust ) .* 
-                    subducted_sediment_layer_fractions[:,:,i_sedtype,i_bin] )
-        end
+                subducted_sediment_fractions[:,:,i_sedtype] )
+        #for i_bin in 1:n_sediment_time_bins
+        subducted_ocean_sediment_volumes[i_sedtype] = 
+            volume_field( subducted_sediment_thickness .* 
+                eq_mask( subducted_crust_type, ocean_crust ) .* 
+                subducted_sediment_fractions[:,:,i_sedtype] )
+        #end
     end
     # adjust points in plate grids, init + deleted
     deleted_sediment_volumes = fill(0.,n_sediment_types)
@@ -535,32 +543,32 @@ function remask_plate!( plate, subduction_footprint )
                         plate.crust_composition[iplate,jplate] = mafic_crust
                         plate.geomorphology[iplate,jplate] = pelagic_seafloor
                         plate.sediment_thickness[iplate,jplate] = 0. # initial_ocean_sediment_thickness
-                        plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
-                        plate.sediment_layer_thickness[iplate,jplate,1] = 0. # initial_ocean_sediment_thickness
-                        plate.sediment_surface_fractions[iplate,jplate,:] .= initial_sediment_fractions
-                        plate.sediment_layer_fractions[iplate,jplate,:,1] .= initial_sediment_fractions
-                        plate.sediment_layer_fractions[iplate,jplate,:,2:end] .= 0.
+                        #plate.sediment_layer_thickness[iplate,jplate,:] .= 0.
+                        #plate.sediment_layer_thickness[iplate,jplate,1] = 0. # initial_ocean_sediment_thickness
+                        plate.sediment_fractions[iplate,jplate,:] .= initial_sediment_fractions
+                        #plate.sediment_layer_fractions[iplate,jplate,:,1] .= initial_sediment_fractions
+                        #plate.sediment_layer_fractions[iplate,jplate,:,2:end] .= 0.
                     else # must be a continent
                         plate.tectonics[iplate,jplate] = new_continent_crust 
                         plate.crust_density[iplate,jplate] = rho_continent_crust
                         plate.crust_composition[iplate,jplate] = felsic_crust
                         plate.geomorphology[iplate,jplate] = sedimented_land
                         plate.sediment_thickness[iplate,jplate] = initial_land_sediment_thickness
-                        plate.sediment_surface_fractions[iplate,jplate,:] .= initial_sediment_fractions
+                        plate.sediment_fractions[iplate,jplate,:] .= initial_sediment_fractions
                     end
                 end
             else # world.plateID[iworld,jworld] != plate.plateID
                 if plate.crust_type[iplate,jplate] == continent_crust
                     plate.tectonics[iplate,jplate] = subducting_continent_crust 
                     deleted_sediment_volumes += plate.sediment_thickness[iplate,jplate] .*
-                        plate.sediment_surface_fractions[iplate,jplate,:] .* areabox[jplate]
+                        plate.sediment_fractions[iplate,jplate,:] .* areabox[jplate]
                 end
                 if plate.crust_type[iplate,jplate] == ocean_crust
                     plate.tectonics[iplate,jplate] = subducting_ocean_crust 
                     for i_bin in 1:n_sediment_time_bins
                         deleted_sediment_volumes += 
-                            plate.sediment_layer_thickness[iplate,jplate,i_bin] .*
-                            plate.sediment_layer_fractions[iplate,jplate,:,i_bin ] .* areabox[jplate]
+                            plate.sediment_thickness[iplate,jplate] .*
+                            plate.sediment_fractions[iplate,jplate,:] .* areabox[jplate]
                     end
                 end
                 delete_plate_point!(plate,iplate,jplate)
@@ -583,21 +591,21 @@ function remask_plate!( plate, subduction_footprint )
                     accum_diag("ocean_subduct_age_thickness",iworld,jworld,
                         plate.crust_age[iplate,jplate] * 
                         areabox[jplate] / areabox[jworld] / sub_time_step )
-                    for ibin in 1:n_sediment_time_bins # sediment record in the layers
-                        for i_sedtype in 1:n_sediment_types
-                            flux_amt = subducted_sediment_layer_thickness[iworld,jworld,ibin] *
-                                subducted_sediment_layer_fractions[iworld,jworld,i_sedtype,ibin]
-                            accum_frac_diag("ocean_subduct_sediment_fraction_thickness",iworld,jworld,
-                                i_sedtype, flux_amt  * 
-                                areabox[jplate] / areabox[jworld] / sub_time_step )
-                        end
-                    end 
+                    #for ibin in 1:n_sediment_time_bins # sediment record in the layers
+                    for i_sedtype in 1:n_sediment_types
+                        flux_amt = subducted_sediment_thickness[iworld,jworld] *
+                            subducted_sediment_fractions[iworld,jworld,i_sedtype]
+                        accum_frac_diag("ocean_subduct_sediment_fraction_thickness",iworld,jworld,
+                            i_sedtype, flux_amt  * 
+                            areabox[jplate] / areabox[jworld] / sub_time_step )
+                    end
+                    #end 
                 elseif subducted_crust_type[iworld,jworld] == continent_crust
                     accum_diag("continent_subduct_plate_thickness",iworld,jworld, 
                         areabox[jplate] / areabox[jworld] / sub_time_step )
                     for i_sedtype in 1:n_sediment_types
                         flux_amt = subducted_sediment_thickness[iworld,jworld] *
-                            subducted_sediment_surface_fractions[iworld,jworld,i_sedtype]
+                            subducted_sediment_fractions[iworld,jworld,i_sedtype]
                         accum_frac_diag("continent_subduct_sediment_fraction_thickness",iworld,jworld,
                             i_sedtype, flux_amt  * 
                             areabox[jplate] / areabox[jworld] / sub_time_step )
@@ -622,11 +630,11 @@ function remask_plate!( plate, subduction_footprint )
 
         rotated_plate_sediment_volumes = 
             volume_fields( eq_mask(rotated_crust_type,continent_crust) .*
-            rotated_sediment_thickness .* rotated_sediment_surface_fractions )
+            rotated_sediment_thickness .* rotated_sediment_fractions )
         cropped_rotated_plate_sediment_volumes = 
             volume_fields( eq_mask(cropped_rotated_crust_type,continent_crust) .*
-            cropped_rotated_sediment_thickness .* cropped_rotated_sediment_surface_fractions )
-        for i_bin in 1:n_sediment_time_bins
+            cropped_rotated_sediment_thickness .* cropped_rotated_sediment_fractions )
+        #=for i_bin in 1:n_sediment_time_bins
             rotated_plate_sediment_volumes += volume_fields( 
                 eq_mask(rotated_crust_type,ocean_crust) .*
                 rotated_sediment_layer_thickness[:,:,i_bin] .* 
@@ -635,7 +643,7 @@ function remask_plate!( plate, subduction_footprint )
                 eq_mask(cropped_rotated_crust_type,ocean_crust) .*
                 cropped_rotated_sediment_layer_thickness[:,:,i_bin] .* 
                 cropped_rotated_sediment_layer_fractions[:,:,:,i_bin] )
-        end
+        end=#
         final_plate_crust_areas = [ volume_field(eq_mask(plate.crust_type,continent_crust)), 
             volume_field(eq_mask(plate.crust_type,ocean_crust)) ]
         final_plate_sediment_volumes = plate_sediment_inventories( plate )[1:end]
@@ -962,11 +970,11 @@ function copy_plate_point_plate12coord!(newplate,oldplate,ixoldplate,iyoldplate,
         newplate.tectonics[ixnewplate,iynewplate] = new_ocean_crust
 
         newplate.sediment_thickness[ixnewplate,iynewplate] = initial_ocean_sediment_thickness
-        newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 0.
-        newplate.sediment_layer_thickness[ixnewplate,iynewplate,1] = initial_ocean_sediment_thickness
-        newplate.sediment_surface_fractions[ixnewplate,iynewplate,:] .= initial_sediment_fractions
-        newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,1] .= initial_sediment_fractions
-        newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,2:end] .= 0.
+        #newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 0.
+        #newplate.sediment_layer_thickness[ixnewplate,iynewplate,1] = initial_ocean_sediment_thickness
+        newplate.sediment_fractions[ixnewplate,iynewplate,:] .= initial_sediment_fractions
+        #newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,1] .= initial_sediment_fractions
+        #newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,2:end] .= 0.
     else
         newplate.crust_type[ixnewplate,iynewplate] = oldplate.crust_type[ixoldplate,iyoldplate]
         newplate.crust_age[ixnewplate,iynewplate] = oldplate.crust_age[ixoldplate,iyoldplate]
@@ -976,12 +984,12 @@ function copy_plate_point_plate12coord!(newplate,oldplate,ixoldplate,iyoldplate,
         newplate.geomorphology[ixnewplate,iynewplate] = oldplate.geomorphology[ixoldplate,iyoldplate]
         newplate.sediment_thickness[ixnewplate,iynewplate] = 
             oldplate.sediment_thickness[ixoldplate,iyoldplate]
-        newplate.sediment_surface_fractions[ixnewplate,iynewplate,:] .= 
-            oldplate.sediment_surface_fractions[ixoldplate,iyoldplate,:]
-        newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 
-            oldplate.sediment_layer_thickness[ixoldplate,iyoldplate,:]
-        newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,:] .= 
-            oldplate.sediment_layer_fractions[ixoldplate,iyoldplate,:,:]
+        newplate.sediment_fractions[ixnewplate,iynewplate,:] .= 
+            oldplate.sediment_fractions[ixoldplate,iyoldplate,:]
+        #newplate.sediment_layer_thickness[ixnewplate,iynewplate,:] .= 
+        #    oldplate.sediment_layer_thickness[ixoldplate,iyoldplate,:]
+        #newplate.sediment_layer_fractions[ixnewplate,iynewplate,:,:] .= 
+        #    oldplate.sediment_layer_fractions[ixoldplate,iyoldplate,:,:]
     end
 end
 function delete_plate_point!(oldplate,ixold,iyold)
@@ -991,9 +999,9 @@ function delete_plate_point!(oldplate,ixold,iyold)
     oldplate.crust_density[ixold,iyold] = 0.
     oldplate.crust_composition[ixold, iyold]
     oldplate.sediment_thickness[ixold,iyold] = 0.
-    oldplate.sediment_surface_fractions[ixold,iyold,:] .= 0.
-    oldplate.sediment_layer_thickness[ixold,iyold,:] .= 0.
-    oldplate.sediment_layer_fractions[ixold,iyold,:,:] .= 0.
+    oldplate.sediment_fractions[ixold,iyold,:] .= 0.
+    #oldplate.sediment_layer_thickness[ixold,iyold,:] .= 0.
+    #oldplate.sediment_layer_fractions[ixold,iyold,:,:] .= 0.
 end
 function auto_filter_changing_platelists(oldIDmap,newIDmap)
     #oldIDmap = world.plateID
@@ -1137,12 +1145,12 @@ function apply_geomorphology_changes_to_plates()
                         world.tectonics[iworld,jworld]
                     plates[plateID].sediment_thickness[iplate,jplate] =
                         world.sediment_thickness[iworld,jworld]
-                    plates[plateID].sediment_surface_fractions[iplate,jplate,:] =
-                        world.sediment_surface_fractions[iworld,jworld,:]
-                    plates[plateID].sediment_layer_thickness[iplate,jplate,:] =
-                        world.sediment_layer_thickness[iworld,jworld,:]
-                    plates[plateID].sediment_layer_fractions[iplate,jplate,:,:] =
-                        world.sediment_layer_fractions[iworld,jworld,:,:]
+                    plates[plateID].sediment_fractions[iplate,jplate,:] =
+                        world.sediment_fractions[iworld,jworld,:]
+                    #plates[plateID].sediment_layer_thickness[iplate,jplate,:] =
+                    #    world.sediment_layer_thickness[iworld,jworld,:]
+                    #plates[plateID].sediment_layer_fractions[iplate,jplate,:,:] =
+                    #    world.sediment_layer_fractions[iworld,jworld,:,:]
                 else
                     delete_plate_point!(plates[plateID],iplate,jplate)
                 end

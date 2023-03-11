@@ -26,7 +26,8 @@ include("io.jl")
 rotations = read_rotation_file(code_base_directory * "/drivers/1000_0_rotfile_Merdith_et_al.rot")
 norotation = rotation2matrix(rotations[1])
 #orogenic_events = create_orogenies()
-create_everything(earliesttime) #+ time_step )
+create_everything( earliesttime ) #+ time_step )
+isostacy()
 setup_working_directories()
 BSON.@load "drivers/plate_ID_changes.bson" plateID_change_log
 BSON.@load "drivers/continent_rotation_ID_field.bson" continent_rotation_ID_field
@@ -56,10 +57,11 @@ function run_timeseries()
         flush(log_IO)
         save_world()
         time_interval = 20 # main_time_step * 10
-        #=if floor(world.age/time_interval) == world.age/time_interval && 
+        if floor(world.age/time_interval) == world.age/time_interval && 
+        #if world.age == 500
             world.age >= time_interval
             save_plates()
-        end=#
+        end
         flush(log_IO)
     end
     close(log_IO)

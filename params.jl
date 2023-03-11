@@ -32,9 +32,10 @@ mutable struct world_struct
     geomorphology    # for sediment transport, subaereal or submarine
     tectonics
     sediment_thickness  # total thickness
-    sediment_surface_fractions # x,y,sed type 
-    sediment_layer_thickness # x,y,time_bins, not used on land points
-    sediment_layer_fractions  # x, y, sed type, time_bin
+    sediment_fractions # x,y,sed type 
+    sediment_inventories
+    #sediment_layer_thickness # x,y,time_bins, not used on land points
+    #sediment_layer_fractions  # x, y, sed type, time_bin
     elevation_offset
     freeboard
     subducted_land_sediment_volumes # [land,ocean], not maps
@@ -56,9 +57,10 @@ mutable struct plate_struct
     tectonics
     #potential_uplift 
     sediment_thickness  # geologic record, dimensions of x,y
-    sediment_surface_fractions # x,y,sed type 
-    sediment_layer_thickness # x,y,time_bins, not used on land points
-    sediment_layer_fractions  # x, y, sed type, time_bin
+    sediment_fractions # x,y,sed type 
+    #sediment_inventories # in meters
+    #sediment_layer_thickness # x,y,time_bins, not used on land points
+    #sediment_layer_fractions  # x, y, sed type, time_bin
     rotationmatrix  # 3x3 heirarchy-resolved rotation matrix
     resolvetime
     parentstack     # list of parents at last resolve time
@@ -89,7 +91,7 @@ world_diag_names = [
     "land_sediment_deposition_rate",
     "land_Q_runoff_field",
     "land_sediment_weathering_index",
-    "seafloor_sediment_deposition_rate",
+    "ocean_crust_sediment_deposition_rate",
     "global_sediment_deposition_rate",
     "world_grid_sediment_change",
     "coastal_CaCO3_flux",
@@ -98,24 +100,27 @@ world_diag_names = [
 world_frac_diag_names = [
     "ocean_subduct_sediment_fraction_thickness",
     "continent_subduct_sediment_fraction_thickness",
-    "continent_initialization_sediment_fraction_volume",
-    "continent_2_ocean_sediment_fraction_leak",
+    #"continent_initialization_sediment_fraction_volume",
+    #"continent_2_ocean_sediment_fraction_leak",
     "ocean_2_continent_sediment_fraction_displaced",
     "continent_2_ocean_sediment_fraction_displaced",
     "denuded_crust_erosion_fraction_rate",
+    #"denuded_crust_sediment_fraction_deposition_rate",
     "ice_sheet_crust_erosion_fraction_rate",
-    "sediment_erosion_fraction_source",
-    "sediment_boundary_fraction_flux",
+    #"ice_sheet_crust_sediment_fraction_deposition_rate",
+    #"sediment_erosion_fraction_source",
+    "sediment_erosion_boundary_fraction_flux",
+    "sediment_denuded_boundary_fraction_flux",
     "aolean_erosion_fraction_flux",
     "aolean_deposition_fraction_flux",
     "land_sediment_fraction_dissolution_rate",
-    "land_sediment_fraction_deposition_rate",
-    "land_sediment_fraction_erosion_rate",
-    "land_trapped_sediment_rate",
+    "land_sediment_fraction_transport_deposition_rate",
+    #"land_sediment_fraction_erosion_rate",
+    #"land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
     "ocean_sediment_fraction_influx",
-    "seafloor_sediment_fraction_deposition_rate",
-    "seafloor_sediment_fraction_overflow",
+    "ocean_crust_sediment_fraction_deposition_rate",
+    #"seafloor_sediment_fraction_overflow",
     "global_sediment_fraction_deposition_rate",
     "global_sediment_fraction_deposition_ratio"]
 
@@ -141,7 +146,7 @@ for iy in 1:ny
     n_equiv_boxes[iy] = Int(floor(delta_y / delta_x[iy]))
 end
 shelf_depth_clastics = -100.0;
-shelf_depth_CaCO3 = -10.0;
+shelf_depth_CaCO3 = 0.0;
 
 log_IO = 0 # dummy file handle for log output file
 
@@ -200,7 +205,7 @@ geo_interval_names = ["Cambrian", "Ordovician", "Silurian", "Devonian",
     "Carboniferous", "Permian", "Triassic", "Jurassic", "Cretaceous",
     "Paleocene", "Eocene", "Oligocene", "Miocene", "Pliocene", "Pleistocene"]
 sealevel_timepoints = [550.0, 500.0, 450.0, 250.0, 75.0, 0.0]
-sealevel_values = [0.0, 0.0, 200.0, 0.0, 250.0, 0.0]
+sealevel_values = [0.0, 0.0, 400.0, 0.0, 250.0, 0.0]
 
 #sealevel_timepoints = [550.0, 500.0, 480.0, 250.0, 75.0, 0.0]
 #sealevel_values = [0.0, 0.0, 80.0, 0.0, 250.0, 0.0]
@@ -216,7 +221,7 @@ sealevel_values = [0.0, 0.0, 200.0, 0.0, 250.0, 0.0]
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "friday_2_16"
+output_tag = "friday_3_10"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -245,10 +250,10 @@ save_plate_transplants_image_number = 0
 enable_land_runoff = true
 enable_aolean_transport = true
 enable_cont_update_from_files = true
-enable_crust_cont2ocn = true
+enable_crust_cont2ocn = false
 enable_crust_ocn2cont = true
 enable_orogeny = true
-enable_subduction_orogeny = false
+#enable_subduction_orogeny = false
 eliminate_regrid_drift = true
 enable_eyeball_changing_plateIDs = true
 enable_sealevel_change = true
@@ -256,6 +261,7 @@ enable_geomorph = true
 enable_atmCO2_change = false
 enable_continental_CaCO3_deposition = true
 enable_CaCO3_land_diss_ocean_repcp = true
+enable_subaereal_sediment_dissolution = true
 #enable_watch_plate_transplant_misses = false
 enable_watch_plate_transplants = false
 enable_save_plate_transplant_images = false
@@ -276,12 +282,15 @@ enable_watch_ocean_offshore_transport = false
 # geophysics parameters
 continent_crust_h0 = 30000.0  # 35000.
 ocean_crust_h0 = 7000.0
-rho_ocean_crust = 3.0
-rho_continent_crust = 2.8
+rho_ocean_crust = 2.9
+rho_continent_crust = 2.7
 rho_lithosphere = 3.375
-rho_mantle = 3.35
+rho_mantle = 3.313
 rho_sediment = 2.7
 rho_seawater = 1.024
+thermal_diffusivity = 2.55e7 # m2 / Myr
+thermal_expansion = 3.3e-5
+max_lithosphere_thickness = 95.e3
 
 #ref_root_over_foot = rho_continent_crust /
 #                     (rho_mantle - rho_continent_crust)
@@ -292,8 +301,8 @@ submarine_sediment_freeboard_expression = 1.0 - (rho_sediment - rho_seawater) /
                                                 (rho_mantle - rho_seawater)
 crust_freeboard_expression = 1.0 - rho_continent_crust / rho_mantle
 continent_lithosphere_thickness = 135.e3
-#mantle_T0 = 2000.0
-#ocean_T0 = 0.0
+mantle_T0 = 2000.0
+ocean_T0 = 0.0
 
 # geomorphology parameters
 orogeny_smooth_coeff = 1000.0
@@ -318,7 +327,7 @@ ice_sheet_erosion_rate = 10.0 # mm/kyr = m/Myr from Jansen 2019
 
 #land_base_diffcoeff *= 0.2 # 0.5
 
-land_base_diffcoeff = 3750. # 7500.0
+land_base_diffcoeff = 3750.0 # 7500.0
 
 #orogenic_erosion_tau_apparent *= 2.0
 orogenic_erosion_tau_apparent = 33.3
@@ -331,10 +340,12 @@ cap_carbonate_max_thickness = 30.0
 
 # sediment types
 sediment_type_names = ["CaCO3", "Clay", "CaO"]
-CaCO3_sediment = 1; clay_sediment = 2; CaO_sediment = 3
+CaCO3_sediment = 1;
+clay_sediment = 2;
+CaO_sediment = 3;
 n_sediment_types = length(sediment_type_names)
 first_land_transported_sediment = clay_sediment
-initial_sediment_fractions = [0., 0.975, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
+initial_sediment_fractions = [0.0, 0.975, 0.025] # adjusted bc not pure CaO [ 0.85,0.,0.15 ] # present-day sed avg: Holland
 orogenic_sediment_source_fractions = [0.0, 0.95, 0.05] # a bit higher for fresh clay?
 sediment_runoff_concentrations = [1.6e-3, 0.0, 2.3e-4] # Lechuga-Crespo 2020 mol Ca / l
 

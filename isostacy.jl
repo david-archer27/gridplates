@@ -4,13 +4,16 @@ function isostacy( )
     new_freeboard = fill(0.,nx,ny)
     for ix in 1:nx
         for iy in 1:ny
-            new_freeboard[ix,iy], lithosphere_thickness[ix,iy] = 
+            new_freeboard[ix,iy], lithosphere_thickness[ix,iy], new_crust_density = 
                 isostacy( 
                     world.crust_type[ix,iy], 
                     world.crust_thickness[ix,iy],
                     world.crust_density[ix,iy], 
                     world.sediment_thickness[ix,iy],
                     world.crust_age[ix,iy])
+            if world.crust_type[ix,iy] == ocean_crust
+                world.crust_density[ix,iy] = new_crust_density
+            end
         end
     end
     world.freeboard[:,:] = new_freeboard[:,:]
@@ -58,11 +61,15 @@ function isostacy( crust_type, crust_thickness, crust_density,
         end
     end
     if crust_type == ocean_crust
-        t_diff = 2.55e7 # m2 / Myr
-        thermal_boundary_thickness = 2. * sqrt( t_diff * crust_age )
+        thermal_boundary_thickness = 2. * sqrt( thermal_diffusivity * crust_age )
+        thermal_boundary_thickness = min(thermal_boundary_thickness, max_lithosphere_thickness)
         lithosphere_thickness = thermal_boundary_thickness - crust_thickness
         lithosphere_thickness = max(0.,lithosphere_thickness)
-        lithosphere_thickness = min(125.e3,lithosphere_thickness)
+        thickness_to_bottom_of_lithosphere = ocean_crust_h0 + lithosphere_thickness
+        crust_temperature = crust_thickness / 
+            thickness_to_bottom_of_lithosphere * mantle_T0 / 2.
+        crust_density = rho_ocean_crust * 
+            ( 1. - crust_temperature * thermal_expansion )
         column_thickness = crust_thickness + 
             sediment_thickness + lithosphere_thickness 
         column_mass = crust_thickness * crust_density +
@@ -82,7 +89,7 @@ function isostacy( crust_type, crust_thickness, crust_density,
             column_thickness_ref - 
             world.sealevel
     end
-    return elevation, lithosphere_thickness
+    return elevation, lithosphere_thickness, crust_density
 end
 
 

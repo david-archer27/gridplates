@@ -49,7 +49,7 @@ function find_steady_state_ocean_CO3( target_CaCO3_deposition_rate )
             ocean_CO3_low = ocean_CO3; depo_low = total_deposition
         end
         imbalance = abs( total_deposition - target_CaCO3_deposition_rate )
-        println(" CO3 ",ocean_CO3," ",ocean_CO3_high," ",ocean_CO3_low," ",total_deposition )
+        #println(" CO3 ",ocean_CO3," ",ocean_CO3_high," ",ocean_CO3_low," ",total_deposition )
     end
     println()
     println("  CaCO3 iters ", n_iters, " tot ", total_deposition, 
@@ -157,19 +157,21 @@ function CaCO3_latitude_scale( iy )
     return lat_scale
 end
 function setup_cap_carbonates()
-    initial_land_sediment_fraction_deposition_rate_fields = fill(0.,nx,ny,n_sediment_types)
+    initial_land_sediment_fraction_transport_deposition_rate_fields = fill(0.0, nx, ny, n_sediment_types)
     for ix in 1:nx
         for iy in 1:ny
-            if world.freeboard[ix,iy] < 0. && world.freeboard[ix,iy] > -1000.
-                initial_land_sediment_fraction_deposition_rate_fields[ix,iy,CaCO3_sediment] =
+            if world.freeboard[ix, iy] < 0.0 && world.freeboard[ix, iy] > -1000.0
+                initial_land_sediment_fraction_transport_deposition_rate_fields[ix, iy, CaCO3_sediment] =
                     cap_carbonate_max_thickness *
                     CaCO3_latitude_scale(iy) / main_time_step
             end
         end
     end
-    new_sediment_thickness, new_sediment_surface_fractions = 
-        apply_continent_crust_sediment_fluxes( initial_land_sediment_fraction_deposition_rate_fields )
-    return new_sediment_thickness, new_sediment_surface_fractions
+    new_sediment_thickness, new_sediment_inventories =
+        apply_sediment_fluxes(initial_land_sediment_fraction_transport_deposition_rate_fields)
+    world.sediment_thickness[:, :] = new_sediment_thickness[:, :]
+    world.sediment_inventories[:, :, :] = new_sediment_inventories[:, :, :]
+    #return new_sediment_thickness, new_sediment_inventories
 end
 
 
@@ -387,7 +389,7 @@ function subaereal_sediment_dissolution( runoff_map )
                 land_sediment_dissolution_rates[ix,iy,1:n_sediment_types] = 
                     runoff_map[ix,iy] ./ # l / km2 s
                     1.e3 ./ 1.e6 .* 3.14e7 .* # meters / year
-                    world.sediment_surface_fractions[ix,iy,:] .* 
+                    world.sediment_fractions[ix,iy,:] .* 
                     sediment_runoff_concentrations[:] .* 1.e3 .* # mol / m3 
                     100. ./ rho_sediment .* 1.e6 # m3 / m3 
                     1.e6 .* # meters dissolved / Myr
@@ -397,12 +399,12 @@ function subaereal_sediment_dissolution( runoff_map )
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
                         world.sediment_thickness[ix, iy] *
-                        world.sediment_surface_fractions[ix, iy, i_sedtype] /
+                        world.sediment_fractions[ix, iy, i_sedtype] /
                         main_time_step * 0.1)
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
                         world.freeboard[ix, iy] *
-                        world.sediment_surface_fractions[ix, iy, i_sedtype] /
+                        world.sediment_fractions[ix, iy, i_sedtype] /
                         main_time_step * 0.1)
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     max(land_sediment_dissolution_rates[ix, iy, i_sedtype], 0.0)
@@ -462,7 +464,7 @@ function subaereal_sediment_dissolution( runoff_map )
 
                 if world.geomorphology[ix,iy] == sedimented_land
                     land_sediment_dissolution_rates[ix,iy,:] = 
-                        world.sediment_surface_fractions[ix,iy,:] .*
+                        world.sediment_fractions[ix,iy,:] .*
                         runoff_map[ix,iy] .* 1.e-3 .* 3.14e7 # m / yr 
 
 
@@ -470,7 +472,7 @@ function subaereal_sediment_dissolution( runoff_map )
 
 
 
-                        world.sediment_surface_fractions[ix,iy,CaO_sediment] /
+                        world.sediment_fractions[ix,iy,CaO_sediment] /
                         initial_sediment_fractions[CaO_sediment] * 
                         sediment_CaO_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
@@ -479,7 +481,7 @@ function subaereal_sediment_dissolution( runoff_map )
                         1.e6 / # g / m2 Myr
                         rho_sediment / 1.e6 # m3 / m2 Myr
                     land_sediment_dissolution_rates[ix,iy,CaCO3_sediment] = 
-                        world.sediment_surface_fractions[ix,iy,CaCO3_sediment] *
+                        world.sediment_fractions[ix,iy,CaCO3_sediment] *
                         sediment_CaCO3_CO2uptake_coeff * 
                         #q_transect[iy] * 1.E-3 * # mol / km2 s
                         runoff_map[ix,iy] * 1.E-3 * # mol / km2 s
@@ -490,7 +492,7 @@ function subaereal_sediment_dissolution( runoff_map )
                         land_sediment_dissolution_rates[ix,iy,i_sedtype] = 
                             min(land_sediment_dissolution_rates[ix,iy,i_sedtype],
                                 world.sediment_thickness[ix,iy] *
-                                    world.sediment_surface_fractions[ix,iy,i_sedtype] /
+                                    world.sediment_fractions[ix,iy,i_sedtype] /
                                     main_time_step * 0.1)
                         land_sediment_dissolution_rates[ix,iy,i_sedtype] =
                             max(land_sediment_dissolution_rates[ix,iy,i_sedtype],0.)
@@ -507,7 +509,7 @@ function land_flux_limit( flux,ix,iy,i_sedtype )
     flux = 
         min( flux,
             world.sediment_thickness[ix,iy] *
-                world.sediment_surface_fractions[ix,iy,i_sedtype] /
+                world.sediment_fractions[ix,iy,i_sedtype] /
                 main_time_step * 0.3 )
     flux = max( flux, 0. )
     return flux

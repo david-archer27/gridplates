@@ -6,7 +6,8 @@ Gridplates also uses the rotation file from GPlates, which specifies the rotatio
 
 The earth is represented as a 180 x 360 grid in latitude and longitude.  Each plate at the earth's surface is also allocated a global grid at the same resolution.  
 
-There are many renamings in the reconstrucrtion: changes of plateID number.  When this happens the information from the old ID has to be interpolated to the grid of the new ID.  The transitions were identified by eye and are read in from a file.  These transitions happen on a sub-time step of 1 myr.  
+There are many renamings in the reconstruction: changes of plateID number.  When this happens the information from the old ID has to be interpolated to the grid of the new ID.  The transitions were identified by eye and are read in from a file.  These transitions happen on a sub-time step of 1 myr.  There is an animation of all the locations of plate ID transplants in the 
+gallery page.  
 
 Each time step the plate rotation matrices are updated and plate information is interpolated to the world grid, in grid points where the GPlates plateID field says that a given plateID outcrops.  The model also reads a file containing the locations of continents in the GPlates reconstruction.  
 
@@ -25,7 +26,8 @@ than -10 degrees C.
 Land sediment transport is diffusive with a transport coefficient set in params.jl . Parts of the domain are completely denuded of sediment in the solution of the time step.  These grid cells are found by iteration.  First they are presumed to be sediment-covered at the end of the step.  Then the step is taken.  If a cell's projected sediment thickness at the end of the step is less than zero, then it is excluded from the calculation in a subsequent iteration.  Adjacent cells then go negative, so multiple passes are required.  Sediment that is denuded by transport in this way, or denuded by the presence of
 ice sheets, is imposed as a boundary condition to the land sediment transport domain, by summing the 
 initial sediment cover in a denuded zone, and distributing it evenly into grid cells surrounding the
-denuded zone.  
+denuded zone.  CaCO3 deposited on land surface points is considered fixed to bedrock, and is not subject to 
+the downhill sediment transport, only dissolution.  
 
 Ocean sediment deposition is governed by the constraint that we mustn't overfill the accomodation space (water depth).  Runoff from the continent is tabulated at coastal ocean grid cells, along with coastal CaCO3 depositon and whatever.  First the flux fields are smoothed into ocean grid points according to a diffusion constant.  Then the coastal grid cells are queried for whether they overflowed or not, and if they did, their mass is transferred inward, away from the coast.  This repeats until all the mass is accomodated. 
 

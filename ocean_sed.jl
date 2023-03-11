@@ -96,6 +96,7 @@ function distribute_ocean_sediment_fluxes( incoming_fluxes, submarine_mask )
         end
         overflow_fluxes = deepcopy(new_overflow_fluxes)
     end 
+    #smooth_sediment_fraction_deposition_rate!( accumulating_depositing_fluxes, submarine_mask )
     return accumulating_depositing_fluxes
 
 end

@@ -192,8 +192,7 @@ end
     
 
 function animate_plateID_changes()
-    directory = base_directory * "/" * output_directory * output_tag * "/" * 
-        animation_directory * "/" * "plateID_changes" 
+    directory = output_location * "/" * "plateID_changes" 
     cd( directory )
     starting_file_list = readdir()
     image_number = 0
@@ -218,5 +217,5 @@ function animate_plateID_changes()
     println("compiling ", mp4_file)
     rm( mp4_file,force=true)
     run(`ffmpeg -r 5 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
-    cd( base_directory * "/" * code_base_directory )
+    cd( code_base_directory )
 end

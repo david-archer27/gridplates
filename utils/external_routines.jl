@@ -528,14 +528,14 @@ function build_real_world()
                 world.sediment_thickness[ix, iy] = 100.0
                 world.geomorphology[ix, iy] = sedimented_land
                 if lithology_grid[ix, iy] in [5] # unconsolidated or mixed sed 
-                    world.sediment_surface_fractions[ix, iy, reactive_clay] = 0.5
+                    world.sediment_fractions[ix, iy, reactive_clay] = 0.5
                 elseif lithology_grid[ix, iy] in [3] # siliciclasic sed
-                    world.sediment_surface_fractions[ix, iy, reactive_clay] = 0.8
+                    world.sediment_fractions[ix, iy, reactive_clay] = 0.8
                 else
-                    world.sediment_surface_fractions[ix, iy, reactive_clay] = 0.2
+                    world.sediment_fractions[ix, iy, reactive_clay] = 0.2
                 end
-                world.sediment_surface_fractions[ix, iy, CaCO3_sediment] =
-                    1.0 - world.sediment_surface_fractions[ix, iy, reactive_clay]
+                world.sediment_fractions[ix, iy, CaCO3_sediment] =
+                    1.0 - world.sediment_fractions[ix, iy, reactive_clay]
             elseif lithology_grid[ix, iy] in [1, 2, 4, 7, 8, 9, 10]
                 world.sediment_thickness[ix, iy] = 0.0
                 world.geomorphology[ix, iy] = exposed_basement

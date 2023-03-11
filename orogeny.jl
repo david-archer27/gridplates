@@ -476,10 +476,10 @@ function get_denuded_sediment_fluxes( denuded_mask )
     for ix in 1:nx
         for iy in 1:ny
             if denuded_mask[ix,iy] == 1
-                for i_sedtype in 1:n_sediment_types
+                for i_sedtype in first_land_transported_sediment:n_sediment_types
                     denuded_sediment_fluxes[ix,iy,i_sedtype] = 
                         world.sediment_thickness[ix,iy] * 
-                        world.sediment_surface_fractions[ix,iy,i_sedtype] / main_time_step
+                        world.sediment_fractions[ix,iy,i_sedtype] / main_time_step
                     denuded_sediment_fluxes[ix,iy,0] += denuded_sediment_fluxes[ix,iy,i_sedtype]
                 end
             end
