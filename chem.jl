@@ -80,11 +80,12 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
         for ix in 1:nx
             for iy in 1:ny
                 if world.crust_type[ix,iy] == continent_crust
-                    if world.freeboard[ix,iy] < shelf_depth_CaCO3
+                    if world.freeboard[ix,iy] < shelf_depth
                         #error(ix," ",iy)
-                        accom_meters = ( shelf_depth_CaCO3 - world.freeboard[ix,iy] ) /
+                        accom_meters = ( shelf_depth - world.freeboard[ix,iy] ) /
                             submarine_sediment_freeboard_expression
-                        max_rate = accom_meters / main_time_step * CaCO3_latitude_scale( iy )
+                        max_rate = accom_meters / main_time_step * 
+                            CaCO3_latitude_scale( iy ) * ( 1. - porosity_continental_sediment )
                         rate_limit = get_coastal_CaCO3_deposition_rate( ocean_CO3, iy )
                         shallow_rates[ix,iy] = min( max_rate, rate_limit )
                     end
@@ -96,13 +97,22 @@ function get_continental_CaCO3_deposition_field( ocean_CO3 )
 end
 function get_pelagic_CaCO3_deposition_field( ocean_CO3 )
     pelagic_rates = fill(0.,nx,ny)
-    for ix in 1:nx
-        for iy in 1:ny
-            if world.geomorphology[ix,iy] <= coastal_depocenter # or pelagic
-                depth = - world.freeboard[ix,iy]
-                delta_CO3 = ocean_CO3 - co3_saturation( depth )
-                set_diag("seafloor_delta_CO3",ix,iy,delta_CO3)
-                pelagic_rates[ix,iy] = get_pelagic_deposition_rate( ocean_CO3, delta_CO3, iy )
+    if enable_pelagic_CaCO3_deposition
+        for ix in 1:nx
+            for iy in 1:ny
+                if world.geomorphology[ix,iy] <= coastal_depocenter &&
+                    world.crust_type[ix,iy] == ocean_crust
+
+                    depth = - world.freeboard[ix,iy]
+                    delta_CO3 = ocean_CO3 - co3_saturation( depth )
+                    set_diag("seafloor_delta_CO3",ix,iy,delta_CO3)
+                    pelagic_rate = get_pelagic_deposition_rate( ocean_CO3, delta_CO3, iy )
+                    accom_meters = ( shelf_depth - world.freeboard[ix,iy] ) /
+                        submarine_sediment_freeboard_expression
+                    max_rate = accom_meters / main_time_step * 
+                        ( 1. - porosity_ocean_sediment )
+                    pelagic_rates[ix,iy] = min( max_rate, pelagic_rate )
+                end
             end
         end
     end
@@ -137,10 +147,19 @@ function get_coastal_CaCO3_deposition_field( ocean_CO3 )
     # confined to coastal_depocenter cells, scaled by latitude
     depo_mask = eq_mask( world.geomorphology, coastal_depocenter )
     depo_rate = fill(0.,nx,ny)
-    for ix in 1:nx
-        for iy in 1:ny
-            depo_rate[ix,iy] = depo_mask[ix,iy] * 
-                get_coastal_CaCO3_deposition_rate( ocean_CO3, iy )
+    if enable_coastal_CaCO3_deposition
+        for ix in 1:nx
+            for iy in 1:ny
+                if depo_mask[ix,iy] == 1
+                    coastal_rate = 
+                        get_coastal_CaCO3_deposition_rate( ocean_CO3, iy )
+                    accom_meters = ( shelf_depth - world.freeboard[ix,iy] ) /
+                        submarine_sediment_freeboard_expression
+                    max_rate = accom_meters / main_time_step * 
+                        ( 1. - porosity_ocean_sediment )
+                    depo_rate[ix,iy] = min( max_rate, coastal_rate )
+                end
+            end
         end
     end
     return depo_rate
@@ -161,9 +180,15 @@ function setup_cap_carbonates()
     for ix in 1:nx
         for iy in 1:ny
             if world.freeboard[ix, iy] < 0.0 && world.freeboard[ix, iy] > -1000.0
-                initial_land_sediment_fraction_transport_deposition_rate_fields[ix, iy, CaCO3_sediment] =
+                accom_meters = (shelf_depth - world.freeboard[ix, iy]) /
+                    submarine_sediment_freeboard_expression
+                max_rate = accom_meters / main_time_step * 
+                    ( 1. - porosity_ocean_sediment )
+                potential_depo_rate = 
                     cap_carbonate_max_thickness *
                     CaCO3_latitude_scale(iy) / main_time_step
+                initial_land_sediment_fraction_transport_deposition_rate_fields[ix, iy, CaCO3_sediment] =
+                    min( max( 0, max_rate), potential_depo_rate )
             end
         end
     end
@@ -371,7 +396,7 @@ function exposed_basement_Ca_dissolution( runoff_map )
                     runoff_map[ix, iy] * # m / yr 
                     river_conc * 1.e3 * # mol Ca/m2 yr
                     100. / # g CaCO3 / m2 yr 
-                    rho_sediment / # cm3 / m2 yr
+                    rho_compacted_sediment / # cm3 / m2 yr
                     1.e6 * # m3 CaCO3 / m2 yr
                     1.e6  # m3 CaCO3 / m2 Myr
             end
@@ -385,21 +410,25 @@ function subaereal_sediment_dissolution( runoff_map )
     #iteration_fraction = 0.75
     for ix in 1:nx
         for iy in 1:ny
-            if world.geomorphology[ix,iy] == sedimented_land
+            if world.geomorphology[ix,iy] == sedimented_land || 
+                world.geomorphology[ix,iy] == exposed_CaCO3
+
                 land_sediment_dissolution_rates[ix,iy,1:n_sediment_types] = 
                     runoff_map[ix,iy] ./ # l / km2 s
-                    1.e3 ./ 1.e6 .* 3.14e7 .* # meters / year
+                    1.e3 ./ 1.e6 .* # m3 / m2 s
+                    3.14e7 .* # m3 / m2 year
                     world.sediment_fractions[ix,iy,:] .* 
-                    sediment_runoff_concentrations[:] .* 1.e3 .* # mol / m3 
-                    100. ./ rho_sediment .* 1.e6 # m3 / m3 
+                    sediment_runoff_concentrations[:] .* 1.e3 .* # mol / m2 yr
+                    100. ./ # g / m2 yr
+                    rho_compacted_sediment ./ # cm3 / m2 yr
+                    1.e6 ./ # m3 / m2 yr
                     1.e6 .* # meters dissolved / Myr
                     CaO_meters_to_CaCO3_meters
             end
             for i_sedtype in 1:n_sediment_types
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
-                        world.sediment_thickness[ix, iy] *
-                        world.sediment_fractions[ix, iy, i_sedtype] /
+                        world.sediment_inventories[ix, iy, i_sedtype] /
                         main_time_step * 0.1)
                 land_sediment_dissolution_rates[ix, iy, i_sedtype] =
                     min(land_sediment_dissolution_rates[ix, iy, i_sedtype],
@@ -413,96 +442,6 @@ function subaereal_sediment_dissolution( runoff_map )
             end
         end
     end
-               
-                  #=  
-                    runoff_Ca_conc_granite + 
-                        ( 1. - crust_composition[ix,iy] ) * runoff_Ca_conc_ultramafic
-                    dissolution_rate = runoff_map[ix,iy] * # m / yr 
-                        1.e6 * # m water / Myr 
-                        river_conc / # m CaO / Myr
-                        CaO_meters_to_CaCO3_meters # CaCO3 equiv for dissolved Ca
-                        
-
-                    total_erodable_flux = get_frac_diag(
-                        "denuded_crust_erosion_fraction_rate",CaO_sediment)[ix,iy]
-                    
-  
-                    #=phys = total_erodable_flux
-                    chem = 0.39 * phys^0.66 # Millot 2002 from Veizer 2014 eqn 5
-                    n_iterations = 0
-                    while abs( phys + chem - total_erodable_flux ) > 1.e-9 && 
-                        n_iterations < 100
-
-                        n_iterations += 1
-                        phys = iteration_fraction * (total_erodable_flux - chem ) +
-                            ( 1 - iteration_fraction ) * phys
-                        chem = 0.39 * phys^0.66 
-                        #println([phys,chem,phys+chem-total_erodable_flux])
-                    end=#
-                    
-                    # redo these based on millot 2002 for shield areas  
-                    # incorporate crust_composition by scaling
-                    # use crust_lost_to_erosion to capture initial volcanic,
-                    # then maturation, Veizer Fig 10
-
-    
-                    land_orogenic_Ca_source_rates[ix,iy] = 
-                        chem * CaO_meters_to_CaCO3_meters
-                        #=
-                        exposed_basement_CO2uptake_coeff *
-                        #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s 
-                        56. * 3.14e7 * 1.e6 / # g / km2 Myr
-                        1.e6 / # g / m2 Myr
-                        rho_sediment / 1.e6 # m3 / m2 Myr
-                        =#
-                end
-
-
-
-
-
-                if world.geomorphology[ix,iy] == sedimented_land
-                    land_sediment_dissolution_rates[ix,iy,:] = 
-                        world.sediment_fractions[ix,iy,:] .*
-                        runoff_map[ix,iy] .* 1.e-3 .* 3.14e7 # m / yr 
-
-
-
-
-
-
-                        world.sediment_fractions[ix,iy,CaO_sediment] /
-                        initial_sediment_fractions[CaO_sediment] * 
-                        sediment_CaO_CO2uptake_coeff * 
-                        #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s ??
-                        56. * 3.14e7 * 1.e6 / # g / km2 Myr
-                        1.e6 / # g / m2 Myr
-                        rho_sediment / 1.e6 # m3 / m2 Myr
-                    land_sediment_dissolution_rates[ix,iy,CaCO3_sediment] = 
-                        world.sediment_fractions[ix,iy,CaCO3_sediment] *
-                        sediment_CaCO3_CO2uptake_coeff * 
-                        #q_transect[iy] * 1.E-3 * # mol / km2 s
-                        runoff_map[ix,iy] * 1.E-3 * # mol / km2 s
-                        100. * 3.14e7 * 1.e6 / # g / km2 Myr
-                        1.e6 / # g / m2 Myr
-                        rho_sediment / 1.e6 # m3 / m2 Myr
-                    for i_sedtype in 1:n_sediment_types
-                        land_sediment_dissolution_rates[ix,iy,i_sedtype] = 
-                            min(land_sediment_dissolution_rates[ix,iy,i_sedtype],
-                                world.sediment_thickness[ix,iy] *
-                                    world.sediment_fractions[ix,iy,i_sedtype] /
-                                    main_time_step * 0.1)
-                        land_sediment_dissolution_rates[ix,iy,i_sedtype] =
-                            max(land_sediment_dissolution_rates[ix,iy,i_sedtype],0.)
-                        land_sediment_dissolution_rates[ix,iy,0] += 
-                            land_sediment_dissolution_rates[ix,iy,i_sedtype]
-                    end
-                end
-            end
-        end
-    end =#
     return land_sediment_dissolution_rates
 end
 function land_flux_limit( flux,ix,iy,i_sedtype )

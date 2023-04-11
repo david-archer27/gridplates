@@ -64,6 +64,13 @@ function distribute_ocean_sediment_fluxes( incoming_fluxes, submarine_mask )
         #println("new over ",volume_field(new_overflow_fluxes[:,:,1]))
         #println("new dep ",volume_field(new_depositing_fluxes[:,:,1]))
         accumulating_depositing_fluxes .+= new_depositing_fluxes
+
+        potential_freeboard = world.freeboard .+ 
+            accumulating_depositing_fluxes[:,:,0] .* 
+            main_time_step .* submarine_sediment_freeboard_expression ./
+            ( 1. .- world.sediment_porosity )
+
+
         #overflow_fluxes = deepcopy(new_overflow_fluxes)
         if enable_distribute_ocean_fluxes_diagnostics
             incoming_flux = #volume_field( incoming_fluxes[:,:,1] ) + 
@@ -189,7 +196,7 @@ function smooth_ocean_area!( sed_fluxes, blob )
         end
     end # diffuse or no
 end
-function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, submarine_mask )
+function check_sediment_overflows!( incoming_fluxes, accumulating_depositing_fluxes, submarine_mask )
     # returns coastal_overflow_fluxes, depositing_fluxes, new_submarine_mask, n_overflows + n_trapped
 
     # divides the fluxes in sed_fluxes into seafloor_sediment_fraction_deposition_rate
@@ -208,8 +215,9 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
     new_submarine_mask = deepcopy(submarine_mask)
     potential_freeboard = world.freeboard .+ 
         ( incoming_fluxes[:,:,0] .+ 
-        already_depositing_fluxes[:,:,0] ) .* 
-        main_time_step .* submarine_sediment_freeboard_expression 
+        accumulating_depositing_fluxes[:,:,0] ) .* 
+        main_time_step .* submarine_sediment_freeboard_expression ./
+        ( 1. .- world.sediment_porosity )
     # 
     for ix in 1:nx
         for iy in 1:ny
@@ -217,7 +225,7 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                 trapped_overflow_fluxes[ix,iy,:] = incoming_fluxes[ix,iy,:]
                 #n_trapped += 1
             else
-                if potential_freeboard[ix,iy] < shelf_depth_clastics # deeper, accumulating
+                if potential_freeboard[ix,iy] < shelf_depth # deeper, accumulating
                     depositing_fluxes[ix,iy,:] = incoming_fluxes[ix,iy,:]
                 else # overflows
                     n_trapped += 1
@@ -232,23 +240,26 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                                 volume_field(depositing_fluxes[:,:,0])+volume_field(coastal_overflow_fluxes[:,:,0]) +
                                 volume_field(trapped_overflow_fluxes[:,:,0]))
                                 =#
-                        incoming_meters = incoming_fluxes[ix,iy,0] * main_time_step
-                        excess_meters = ( potential_freeboard[ix,iy] - shelf_depth_clastics ) /
+                        incoming_uncompacted_meters = incoming_fluxes[ix,iy,0] * main_time_step /
+                            ( 1. - world.sediment_porosity[ix,iy] )
+                        excess_uncompacted_meters = ( potential_freeboard[ix,iy] - shelf_depth ) /
                             submarine_sediment_freeboard_expression
-                        meters_exported = min( excess_meters, incoming_meters )
-                        meters_deposited_locally = incoming_meters - meters_exported
+                        uncompacted_meters_exported = min( excess_uncompacted_meters, incoming_uncompacted_meters )
+                        compacted_meters_deposited_locally = 
+                            ( incoming_uncompacted_meters - uncompacted_meters_exported ) *
+                            ( 1. - world.sediment_porosity[ix,iy] )
                         fractions_exported = []; sum_check = 0.
                         for i_sedtype in 1:n_sediment_types
                             fraction = incoming_fluxes[ix,iy,i_sedtype] /
                                 incoming_fluxes[ix,iy,0]
                             sum_check += fraction
                             push!(fractions_exported, fraction)
-                            depositing_fluxes[ix,iy,i_sedtype] +=
-                                meters_deposited_locally * fraction / main_time_step
+                            depositing_fluxes[ix,iy,i_sedtype] =
+                                compacted_meters_deposited_locally * fraction / main_time_step
                         end
                         #incoming_fluxes[ix,iy,0] -= meters_exported / main_time_step
-                        depositing_fluxes[ix,iy,0] +=
-                            meters_deposited_locally / main_time_step
+                        depositing_fluxes[ix,iy,0] =
+                            compacted_meters_deposited_locally / main_time_step
 
                         if sum_check < 0.99 || sum_check > 1.01
                             error("sum_check error ",[ix,iy],incoming_fluxes[ix,iy,:])
@@ -259,8 +270,8 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                         depositing_border_neighbor_coords = []
                         for pair in border_neighbor_coords
                             ixn = pair[1]; iyn = pair[2]
-                            if potential_freeboard[ixn,iyn] < shelf_depth_clastics
-                                push!(depositing_border_neighbor_coords, pair)
+                            if potential_freeboard[ixn,iyn] < shelf_depth
+                                push!( depositing_border_neighbor_coords, pair )
                             end
                         end
                         if length(depositing_border_neighbor_coords) > 0 # coastal
@@ -268,13 +279,14 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                             world.geomorphology[ix,iy] = ocean_shelf
                             n_overflows += 1 
                             # triggering another pass
-                            volume_exported = meters_exported * areabox[iy]
+                            compacted_volume_exported = uncompacted_meters_exported * 
+                                ( 1. - world.sediment_porosity[ix,iy] ) * areabox[iy]
                             area_depositing = 0.
                             for pair in depositing_border_neighbor_coords
                                 ixn = pair[1]; iyn = pair[2]
                                 area_depositing += areabox[iyn]
                             end
-                            mean_meters_depositing = volume_exported / area_depositing
+                            mean_meters_depositing = compacted_volume_exported / area_depositing
                             for pair in depositing_border_neighbor_coords
                                 ixn = pair[1]; iyn = pair[2]
                                 n_boxes = length(depositing_border_neighbor_coords)
@@ -299,13 +311,13 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
                             world.geomorphology[ix,iy] = filled_basin
                             n_trapped += 1
                             for i_sedtype in 1:n_sediment_types 
-                                trapped_overflow_fluxes[ix,iy,i_sedtype] += 
-                                    meters_exported / main_time_step * 
+                                trapped_overflow_fluxes[ix,iy,i_sedtype] = 
+                                    uncompacted_meters_exported * 
+                                    ( 1. - world.sediment_porosity[ix,iy] ) /
+                                    main_time_step * 
                                     fractions_exported[i_sedtype]
+                                trapped_overflow_fluxes[ix,iy,0] += trapped_overflow_fluxes[ix,iy,i_sedtype]
                             end
-                            trapped_overflow_fluxes[ix,iy,0] += 
-                                meters_exported / main_time_step
-
                         end
                         #=println("after ",volume_field(incoming_fluxes[:,:,0])," ",
                         volume_field(depositing_fluxes[:,:,0]), " ",
@@ -380,47 +392,47 @@ function check_sediment_overflows!( incoming_fluxes, already_depositing_fluxes, 
     
     return coastal_overflow_fluxes, depositing_fluxes, new_submarine_mask, n_overflows + n_trapped
 end
-function redistribute_trapped_land_fluxes_to_coast!( trapped_land_fluxes,
-    coastal_fluxes, submarine_mask )
+function redistribute_trapped_land_fluxes_to_coast!( trapped_overflow_fluxes,
+    coastal_overflow_fluxes, submarine_mask )
     # move stuff from trapped overflow points to coastal deposition fluxes
     land_mask = 1 .- submarine_mask
     land_blobs = get_blobs(land_mask)
-    trapped_volume = 
-        [ volume_field( trapped_land_fluxes[:,:,0]  ), volume_field( trapped_land_fluxes[:,:,1]  ),volume_field( trapped_land_fluxes[:,:,2]  )]
-    coastal_volume = 
-        [ volume_field( coastal_fluxes[:,:,0]  ), volume_field( coastal_fluxes[:,:,1]  ), volume_field( coastal_fluxes[:,:,2]  )]
+    trapped_volumes = volume_fields( trapped_overflow_fluxes )
+    coastal_volumes = volume_fields( coastal_overflow_fluxes )
     for i_blob in 1:length(land_blobs)
         #println("about to blow ", i_blob)
         blob = land_blobs[i_blob]
-        if volume_field( trapped_land_fluxes[:,:,0] .* blob ) > 0
+        if volume_field( trapped_overflow_fluxes[:,:,0] .* blob ) > 0
             #println("moving stuff ",i_blob," ",trapped_volume," ",coastal_volume," ",trapped_volume + coastal_volume)
-            blob_fringe_list = get_blob_fringe_exterior_list( blob )
+            blob_fringe_list, blob_fringe_field = get_blob_fringe_exterior_list( blob )
             for ix in 1:nx
                 for iy in 1:ny
                     if blob[ix,iy] == 1
                         for i_sedtype in 1:n_sediment_types
-                            if trapped_land_fluxes[ix,iy,i_sedtype] != 0.
+                            if trapped_overflow_fluxes[ix,iy,i_sedtype] != 0.
                                 ixn, iyn = find_nearest_fringe_point(ix,iy,blob_fringe_list)
-                                #println("fringe pt ",[ix,iy,ixn,iyn])
-                                source_meter_flux = trapped_land_fluxes[ix,iy,i_sedtype]
-                                source_volume_flux = source_meter_flux  *
+                                if ixn == 359 && iyn == 56
+                                    println("fringe pt ",[ix,iy,ixn,iyn])
+                                end
+                                source_compacted_flux = trapped_overflow_fluxes[ix,iy,i_sedtype]
+                                source_volume_flux = source_compacted_flux  *
                                     areabox[iy]
-                                sink_meter_flux = source_volume_flux / areabox[iyn]
-                                coastal_fluxes[ixn, iyn,i_sedtype] += 
-                                    sink_meter_flux
-                                coastal_fluxes[ixn, iyn,0] += 
-                                    sink_meter_flux
-                                trapped_land_fluxes[ix,iy,i_sedtype] -= source_meter_flux
-                                trapped_land_fluxes[ix,iy,0] -= source_meter_flux
+                                sink_compacted_flux = source_volume_flux / areabox[iyn]
+                                coastal_overflow_fluxes[ixn, iyn,i_sedtype] += 
+                                    sink_compacted_flux
+                                coastal_overflow_fluxes[ixn, iyn,0] += 
+                                    sink_compacted_flux
+                                trapped_overflow_fluxes[ix,iy,i_sedtype] -= source_compacted_flux
+                                trapped_overflow_fluxes[ix,iy,0] -= source_compacted_flux
                             end
                         end
                     end
                 end
             end
         trapped_volume = 
-            [ volume_field( trapped_land_fluxes[:,:,0]  ), volume_field( trapped_land_fluxes[:,:,1]  ),volume_field( trapped_land_fluxes[:,:,2]  )]
+            volume_fields( trapped_overflow_fluxes )
         coastal_volume = 
-            [ volume_field( coastal_fluxes[:,:,0]  ), volume_field( coastal_fluxes[:,:,1]  ), volume_field( coastal_fluxes[:,:,2]  )]
+            volume_fields( coastal_overflow_fluxes )
     
         #println("moved stuff ",i_blob," ",trapped_volume," ",coastal_volume," ",trapped_volume + coastal_volume)
             
@@ -436,14 +448,15 @@ function find_nearest_fringe_point(ix,iy,blob_fringe_list)
     end
     ixf = blob_fringe_list[1][1]; iyf = blob_fringe_list[1][2]
     min_distance = crow_flies(ycoords[iy],xcoords[ix],ycoords[iyf],xcoords[ixf])
-    min_x = ixf; min_y = iyf
+    min_x = ixf; min_y = iyf; test_distance = 0.
     for i_pos in 2:length(blob_fringe_list)
         ixf = blob_fringe_list[i_pos][1]; iyf = blob_fringe_list[i_pos][2]
         #println("trying ",[xcoords[ix],ycoords[iy],xcoords[ixf],ycoords[iyf]])
         test_distance = crow_flies(ycoords[iy],xcoords[ix],ycoords[iyf],xcoords[ixf])
         if test_distance < min_distance
-            #println("dist ",[min_distance,test_distance])
-            test_distance = min_distance
+            #test_distance = min_distance
+            #println("dist ",[min_distance,test_distance,ixf,iyf,i_pos])
+            min_distance = test_distance
             min_x = ixf; min_y = iyf
         end
     end

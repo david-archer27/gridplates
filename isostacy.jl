@@ -33,11 +33,13 @@ function isostacy( crust_type, crust_thickness, crust_density,
         #tot_cap_thickness = crust_thickness +
         #    sediment_thickness
         lithosphere_thickness = continent_lithosphere_thickness
+        #uncompacted_sediment_thickness = sediment_thickness / 
+        #    ( 1. - porosity_continental_sediment )
         column_thickness = crust_thickness +
             sediment_thickness + lithosphere_thickness
         column_mass = crust_thickness * crust_density +
             lithosphere_thickness * rho_lithosphere +
-            sediment_thickness * rho_sediment
+            sediment_thickness * rho_bulk_continental_sediment
         aestheno_thickness_to_ref = 
             ( column_mass_ref - column_mass) / 
             rho_mantle
@@ -70,15 +72,17 @@ function isostacy( crust_type, crust_thickness, crust_density,
             thickness_to_bottom_of_lithosphere * mantle_T0 / 2.
         crust_density = rho_ocean_crust * 
             ( 1. - crust_temperature * thermal_expansion )
-        column_thickness = crust_thickness + 
+        #uncompacted_sediment_thickness = sediment_thickness /
+        #    ( 1.0 - porosity_ocean_sediment )
+        column_thickness = crust_thickness +
             sediment_thickness + lithosphere_thickness 
         column_mass = crust_thickness * crust_density +
-            sediment_thickness * rho_sediment +
+            sediment_thickness * rho_bulk_ocean_sediment +
             lithosphere_thickness * rho_lithosphere
         column_mean_density = column_mass / column_thickness
         column_mass_in_water = 
             crust_thickness * ( crust_density - rho_seawater ) +
-            sediment_thickness * ( rho_sediment - rho_seawater ) +
+            sediment_thickness * ( rho_bulk_ocean_sediment - rho_seawater ) +
             lithosphere_thickness * ( rho_lithosphere - rho_seawater )
         aestheno_thickness_to_ref = 
             ( column_mass_ref_in_water - column_mass_in_water ) / 
@@ -109,7 +113,7 @@ function muddy_isostatic_freeboard( sediment_thickness_change )
 end
 #function isostacy_point(crust_thickness,crust_density,sediment_thickness,
 #    crust_age,)
-function isostacy_point_old(crust_thickness,crust_density,sediment_thickness,
+#=function isostacy_point_old(crust_thickness,crust_density,sediment_thickness,
     elevation_offset)
     surface_boundary_mass =
         crust_thickness * crust_density +
@@ -136,7 +140,7 @@ function isostacy_point_old(crust_thickness,crust_density,sediment_thickness,
             ( 1. + submerged_root_over_foot )
     end
     return freeboard
-end
+end=#
 function isostacy(crust_thickness,crust_density,sediment_thickness,
     elevation_offset) # sets the elevation of the solid surface rel to mantle line
     # time independent

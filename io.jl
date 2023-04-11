@@ -37,7 +37,6 @@ function read_my_csv(filename)
     end
     return arr
 end
-
 function read_flip_csv(filename)
     f = open(filename)
     arr = fill(0.0, nx, ny)
@@ -172,7 +171,7 @@ function read_world(age)
     timestamp = string(Int(ceil(age)))
     # in world grid, only the age field is non-trivial to calculate
     filename = world_directory * "/" * output_tag * ".world." * timestamp * ".bson"
-    println("reading world ", filename)
+    #println("reading world ", filename)
     BSON.@load filename world
     return world
 end
@@ -300,7 +299,7 @@ function create_html_directory()
             println(out_file, "</a></p></td>")
             n_plots_in_line += 1
             if n_plots_in_line == 2
-                println(out_file,"</tr><tr>")
+                println(out_file, "</tr><tr>")
                 n_plots_in_line = 0
             end
         end
@@ -316,7 +315,7 @@ function create_html_directory()
             println(out_file, "<td><img src=\"" * file * "\" width = \"500\"><p></td>")
             n_plots_in_line += 1
             if n_plots_in_line == 2
-                println(out_file,"</tr><tr>")
+                println(out_file, "</tr><tr>")
                 n_plots_in_line = 0
             end
         end
@@ -325,7 +324,6 @@ function create_html_directory()
     close(out_file)
     cd(code_base_directory)
 end
-
 function animate(plot_function, plot_type)
     cd(animation_directory)
     if plot_type in readdir()
@@ -337,7 +335,8 @@ function animate(plot_function, plot_type)
     starting_file_list = readdir()
     image_number = 0
     ages = [animation_final_age]
-    for age in animation_initial_age: - main_time_step * animation_n_step : animation_final_age
+    for age in animation_initial_age:-main_time_step*animation_n_step:animation_final_age
+        main_time_step*animation_n_step:animation_final_age
         main_time_step*animation_n_step:animation_final_age
         push!(ages, age)
     end
@@ -366,36 +365,36 @@ function animate(plot_function, plot_type)
     cd(code_base_directory)
 end
 function plot_scotese_stuff()
-    world.age -= 5.
-    paleo_rotation_ID_field = read_plateIDs( world.age )
+    world.age -= 5.0
+    paleo_rotation_ID_field = read_plateIDs(world.age)
     age_string = lpad(Int(ceil(world.age)), 3, "0")
     CS_file_name = code_base_directory *
                    "/drivers/scotese_elevation_files_modern/scotese_elev_today." *
                    age_string * "Ma.bson"
     BSON.@load CS_file_name elevation
     paleo_elevation = rotate_field_0_to_age(elevation, world.age)
-    cd( code_base_directory * "/drivers/scotese_paleo_temp_files_modern")
+    cd(code_base_directory * "/drivers/scotese_paleo_temp_files_modern")
     file_list = readdir()
     file_name = "scotese_ptemp." *
-        age_string * "Ma.bson"
-    ice_sheet_mask = fill(0.,nx,ny)
+                age_string * "Ma.bson"
+    ice_sheet_mask = fill(0.0, nx, ny)
     if file_name in file_list
         BSON.@load file_name paleo_temp_modern
-        paleo_temp = rotate_field_0_to_current_age( paleo_temp_modern )
-        ice_sheet_mask = lt_mask(paleo_temp, -10) 
+        paleo_temp = rotate_field_0_to_current_age(paleo_temp_modern)
+        ice_sheet_mask = lt_mask(paleo_temp, -10)
     end
     scene = setup_plot_field()
     scene = plot_field_with_colortab!(scene, paleo_elevation, -5000, 5000, 0, 0, "freeboard")
     Makie.contour!(scene, xcoords, ycoords, ice_sheet_mask, color=:white)
     text!(scene, age_string * " Ma", position=(-180, 110), textsize=30)
-    cd( code_base_directory )
+    cd(code_base_directory)
     return scene
 end
 function plot_elevation_misfit()
     target_elevation = get_diag("target_elevation")
     misfitfield = world.freeboard .- target_elevation
-    maskfield = eq_mask(world.crust_type,ocean_crust)
-    plotfield = mask_to_NaN(misfitfield,maskfield)
+    maskfield = eq_mask(world.crust_type, ocean_crust)
+    plotfield = mask_to_NaN(misfitfield, maskfield)
     scene = plot_field(plotfield, -500, 500)
     plot_add_coast_lines!(scene)
     plot_add_ice_mountain_wig!(scene)
@@ -419,10 +418,11 @@ end
 function plot_elevation()
     #scaled_thickness = land_ocean_scale(world.freeboard,0.,5000.,-6000.,0.)
     scene = setup_plot_field()
-    plotfield = mask_to_NaN(world.freeboard,eq_mask(world.geomorphology,exposed_basement))
+    plotfield = mask_to_NaN(world.freeboard, eq_mask(world.geomorphology, exposed_basement))
     scene = plot_field_with_colortab!(scene, plotfield, -6000, 6000, 0, 0, "freeboard")
     plot_add_ice_mountain_wig!(scene)
     plot_add_coast_lines!(scene)
+    plot_add_continent_outlines!(scene)
     #plot_add_sediment_thickness_contours!(scene)
     #plot_add_ice_sheets!(scene)
     #plot_add_orogeny!(scene)
@@ -439,17 +439,16 @@ function plot_lithosphere_thickness()
     plot_add_coast_lines!(scene)
     return scene
 end
-
 function plot_pct_CaCO3()
-    maskfield = eq_mask(world.geomorphology,ice_sheet_covered) .+
-        eq_mask(world.geomorphology,exposed_basement)
+    maskfield = eq_mask(world.geomorphology, ice_sheet_covered) .+
+        eq_mask(world.geomorphology, exposed_basement)
     plotfield = mask_to_NaN(
         world.sediment_fractions[:, :, CaCO3_sediment],
-        maskfield )
+        maskfield)
 
     plotfield = world.sediment_fractions[:, :, CaCO3_sediment]
 
-    scene = plot_field( plotfield .* 100.0, 0.0, 100.0)
+    scene = plot_field(plotfield .* 100.0, 0.0, 100.0)
     plot_add_plate_boundaries!(scene)
     #plot_add_ice_sheets!(scene)
     plot_add_orogeny!(scene)
@@ -460,20 +459,20 @@ function plot_pct_CaCO3()
     plot_add_title!(scene, "%CaCO3")
     cont_depo = volume_field(
         get_diag("continental_CaCO3_deposition_rate")) * # m3 / myr
-                rho_sediment / # g / yr 
+                rho_compacted_sediment / # g / yr 
                 100.0 / 1.e12   #  E12 mol / yr
     cont_diss = volume_field(
         get_frac_diag("land_sediment_fraction_dissolution_rate",
             CaCO3_sediment)) * # m3 / myr
-                rho_sediment / # g / yr 
+                rho_compacted_sediment / # g / yr 
                 100.0 / 1.e12   #  E12 mol / yr
     coast_depo = volume_field(
         get_diag("coastal_CaCO3_flux")) * # m3 / myr
-                 rho_sediment / # g / yr 
+                 rho_compacted_sediment / # g / yr 
                  100.0 / 1.e12  #  E12 mol / yr
     pelagic_depo = volume_field(
         get_diag("pelagic_CaCO3_deposition_rate")) * # m3 / myr
-                   rho_sediment / # g / yr 
+                   rho_compacted_sediment / # g / yr 
                    100.0 / 1.e12 #  E12 mol / yr
     net = cont_depo - cont_diss + coast_depo + pelagic_depo
     text_out = "CaCO3 deposition: Continental " * my_string(cont_depo) * " - " * my_string(cont_diss) *
@@ -482,15 +481,15 @@ function plot_pct_CaCO3()
     text!(scene, text_out, position=(-60, 110), textsize=20)
     continental_CaCO3_dissolution_rate = volume_field(
         get_frac_diag("land_sediment_fraction_dissolution_rate", CaCO3_sediment)) * # m3 / myr
-                                         rho_sediment / # g / yr 
+                                         rho_compacted_sediment / # g / yr 
                                          100.0 / 1.e12 #  E12 mol / yr
     continental_CaO_dissolution_rate = volume_field(
         get_frac_diag("land_sediment_fraction_dissolution_rate", CaO_sediment)) * # m3 / myr
-                                       rho_sediment / # g / yr 
+                                       rho_compacted_sediment / # g / yr 
                                        100.0 / 1.e12 #  E12 mol / yr
     land_orogenic_Ca_source_rate = volume_field(
         get_diag("land_orogenic_Ca_source_rates")) * # m3 / myr
-                                   rho_sediment / # g / yr 
+                                   rho_compacted_sediment / # g / yr 
                                    100.0 / 1.e12 #  E12 mol / yr
     total_Ca_sources =
         land_orogenic_Ca_source_rate +
@@ -599,7 +598,7 @@ function plot_weathering_index()
     #plot_add_ice_sheets!(scene)
     #plot_add_orogeny!(scene)
     plot_add_continent_outlines!(scene)
-    plot_add_timestamp!(scene, world.age, -180, -105) 
+    plot_add_timestamp!(scene, world.age, -180, -105)
     plot_add_title!(scene, "CaO depletion relative to unreactive clay")
     #=   #scene = plot_field(world.freeboard,-5000.,5000)
     continental_CaO_dissolution_rate = volume_field(
@@ -634,11 +633,22 @@ function plot_weathering_index()
     text!(scene, text_out, position=(0, 100), textsize=20) =#
     return scene
 end
+function plot_weathering_age()
+    maskfield = 1 .- eq_mask(world.geomorphology, sedimented_land)
+    weathering_age = mask_to_NaN( world.sediment_weathering_age, maskfield )
+    scene = plot_field(weathering_age,0.,100)
+    plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
+
+    plot_add_timestamp!(scene, world.age, -180, -105)    #scene = plot_field(world.freeboard,-5000.,5000)
+    plot_add_title!(scene, "Land Sediment Weathering Age, Myr")
+    return scene
+end
 function plot_CaO_weathering_rate()
     weathering_rate = get_frac_diag("land_sediment_fraction_dissolution_rate", CaO_sediment) +
-        get_diag("land_orogenic_Ca_source_rates")
-    maskfield = eq_mask(world.crust_type,ocean_crust)
-    plotfield = mask_to_NaN(weathering_rate,maskfield)
+                      get_diag("land_orogenic_Ca_source_rates")
+    maskfield = eq_mask(world.crust_type, ocean_crust)
+    plotfield = mask_to_NaN(weathering_rate, maskfield)
     scene = plot_field(plotfield, 0.0, 3.0)
     plot_add_plate_boundaries!(scene)
     #plot_add_ice_mountain_wig!(scene)
@@ -649,14 +659,28 @@ function plot_CaO_weathering_rate()
     plot_add_title!(scene, "CaO Weathering Flux, m/Myr")
     return scene
 end
+function plot_CaCO3_weathering_rate()
+    weathering_rate = get_frac_diag("land_sediment_fraction_dissolution_rate", CaCO3_sediment)
+    maskfield = 1 .- eq_mask(world.geomorphology, sedimented_land)
+    plotfield = mask_to_NaN(weathering_rate, maskfield)
+    scene = plot_field(plotfield, 0.0, 3.0)
+    #plot_add_plate_boundaries!(scene)
+    #plot_add_ice_mountain_wig!(scene)
+    plot_add_continent_outlines!(scene)
+    plot_add_coast_lines!(scene)
+    #plot_add_land_sediment_thickness_contours!(scene)
+    plot_add_timestamp!(scene, world.age, -180, -105)    #scene = plot_field(world.freeboard,-5000.,5000)
+    plot_add_title!(scene, "CaCO3 Weathering Flux, m/Myr")
+    return scene
+end
 function plot_sediment_thickness()
-    #maskfield = eq_mask(world.geomorphology, exposed_basement)
-    #plotfield = mask_to_NaN(world.sediment_thickness, maskfield)
+    maskfield = eq_mask(world.geomorphology, exposed_basement) 
+    plotfield = mask_to_NaN(world.sediment_thickness, maskfield) ./ 1000.0
 
-    plotfield = world.sediment_thickness
+    #plotfield = world.sediment_thickness
 
-    scene = plot_field(plotfield, 0.0, 2000.0) # plot_sediment_thickness()
-    plot_add_plate_boundaries!(scene)
+    scene = plot_field(plotfield, 0.0, 6.0) # plot_sediment_thickness()
+    #plot_add_plate_boundaries!(scene)
     #plot_add_ice_sheets!(scene)
     #plot_add_orogeny!(scene)
     #plot_add_ice_mountain_wig!(scene)
@@ -664,11 +688,11 @@ function plot_sediment_thickness()
     plot_add_coast_lines!(scene)
     #plot_add_sediment_thickness_contours!(scene)
     plot_add_timestamp!(scene, world.age, -180, -105)
-    plot_add_title!(scene, "Sediment Thickness, m") # L(0:2km)/O(0:2km)")
+    plot_add_title!(scene, "Sediment Thickness, km") # L(0:2km)/O(0:2km)")
     return scene
 end
 function plot_ocean_sediment_thickness()
-    sedthick = mask_to_NaN( world.sediment_thickness, eq_mask( world.crust_type, continent_crust ) )
+    sedthick = mask_to_NaN(world.sediment_thickness, eq_mask(world.crust_type, continent_crust))
     scene = plot_field(sedthick, 0.0, 5000.0) # plot_sediment_thickness()
     #plot_add_plate_boundaries!(scene)
     #plot_add_ice_sheets!(scene)
@@ -683,8 +707,9 @@ function plot_ocean_sediment_thickness()
 end
 function plot_sedimentation_rate()
     sed_rate = get_diag("global_sediment_deposition_rate")
-    scene = plot_field(sed_rate, 0.0, 100.0) 
-    plot_add_plate_boundaries!(scene)
+    new_sed_rate = mask_to_NaN( sed_rate, eq_mask(sed_rate, 0.) )
+    scene = plot_field(new_sed_rate, 0.0, 100.0)
+    #plot_add_plate_boundaries!(scene)
     plot_add_ice_mountain_wig!(scene)
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
@@ -694,11 +719,11 @@ function plot_sedimentation_rate()
     return scene
 end
 function plot_shallow_water_depth()
-    shoals = mask_to_NaN(world.freeboard, 
-        gt_mask(world.freeboard,120.) .+ 
-        lt_mask(world.freeboard,-120.))
+    shoals = mask_to_NaN(world.freeboard,
+        gt_mask(world.freeboard, 120.0) .+
+        lt_mask(world.freeboard, -120.0))
 
-    scene = plot_field(shoals,-120,120,"freeboard")
+    scene = plot_field(shoals, -120, 120, "freeboard")
     plot_add_continent_outlines!(scene)
     plot_add_coast_lines!(scene)
     #plot_add_ice_mountain_wig!(scene)
@@ -708,34 +733,34 @@ function plot_shallow_water_depth()
 end
 function plot_crust_type()
     scene = plot_field(world.crust_type)
-    plot_add_coast_lines!(scene)
-    plot_add_continent_outlines!(scene)
+    #plot_add_coast_lines!(scene)
+    #plot_add_continent_outlines!(scene)
     contIDs = read_continentIDs()
-    new_points = fill(0,nx,ny)
+    new_points = fill(0, nx, ny)
     for ix in 1:nx
         for iy in 1:ny
             contIDs[ix, iy] = min(1, contIDs[ix, iy])
-            if contIDs[ix,iy] > 0 && world.crust_type[ix,iy] == ocean_crust
-                new_points[ix,iy] = 1
+            if contIDs[ix, iy] > 0 && world.crust_type[ix, iy] == ocean_crust
+                new_points[ix, iy] = 1
             end
         end
     end
     trimmed_new_points = deepcopy(new_points)
     for ix in 1:nx
         for iy in 1:ny
-            if new_points[ix,iy] == 1
-                if new_points[ix_left(ix),iy] == 0 ||
-                    new_points[ix_right(ix),iy] == 0
-                    trimmed_new_points[ix,iy] = 0
-                end 
+            if new_points[ix, iy] == 1
+                if new_points[ix_left(ix), iy] == 0 ||
+                   new_points[ix_right(ix), iy] == 0
+                    trimmed_new_points[ix, iy] = 0
+                end
                 if iy > 1
-                    if new_points[ix,iy-1] == 0
-                        trimmed_new_points[ix,iy] = 0
+                    if new_points[ix, iy-1] == 0
+                        trimmed_new_points[ix, iy] = 0
                     end
-                end 
-                if iy < ny 
-                    if new_points[ix,iy+1] == 0
-                        trimmed_new_points[ix,iy] = 0
+                end
+                if iy < ny
+                    if new_points[ix, iy+1] == 0
+                        trimmed_new_points[ix, iy] = 0
                     end
                 end
             end
@@ -749,11 +774,11 @@ function plot_crust_type()
     return scene
 end
 function plot_CaCO3_sedimentation_rate()
-    sed_rate = get_frac_diag("ocean_crust_sediment_fraction_deposition_rate", CaCO3_sediment) .+
+    sed_rate = get_frac_diag("submarine_sediment_fraction_deposition_rate", CaCO3_sediment) .+
                get_diag("continental_CaCO3_deposition_rate") .-
                get_frac_diag("land_sediment_fraction_dissolution_rate", CaCO3_sediment)
     #sed_rate *= 1000.0
-    scene = plot_field(sed_rate, -20.0, 20.0) 
+    scene = plot_field(sed_rate, -20.0, 20.0)
     plot_add_plate_boundaries!(scene)
     plot_add_ice_mountain_wig!(scene)
     #plot_add_ice_sheets!(scene)
@@ -787,9 +812,9 @@ function plot_crust_thickness()
 end
 function plot_crust_thickening_rate()
     thickening = get_diag("crust_thickening_rate")
-    maskfield = eq_mask( thickening, 0. )
-    filtered = mask_to_NaN( thickening, maskfield )
-       
+    maskfield = eq_mask(thickening, 0.0)
+    filtered = mask_to_NaN(thickening, maskfield)
+
     scene = plot_field(filtered, -5000.0, 5000.0)
     plot_add_plate_boundaries!(scene)
     #plot_add_ice_sheets!(scene)
@@ -814,8 +839,8 @@ function plot_weathering_rate()
 end
 function plot_runoff()
     runoff = get_diag("land_Q_runoff_field")
-    maskfield = lt_mask(world.freeboard,0.)
-    plotfield = mask_to_NaN(runoff,maskfield)
+    maskfield = lt_mask(world.freeboard, 0.0)
+    plotfield = mask_to_NaN(runoff, maskfield)
     scene = plot_field(plotfield, 0.0, 40.0)
     plot_add_plate_boundaries!(scene)
     plot_add_ice_mountain_wig!(scene)
@@ -827,44 +852,44 @@ function plot_runoff()
     return scene
 end
 function plot_hypsometry(image_file_name::String="")
-    today_depths = [4.5,3.5,2.5,1.5,0.5,-0.5,-1.5,-2.5,-3.5,-4.5,-5.5,-6.5] .* 1.e3
-    today_areas =  [0.5,1.1,2.2,4.5,20.9,8.5,3.0,4.8,13.9,23.2,16.4,1.0]
-    today_cum_areas = [ ] 
-    today_cum_area = 0.
+    today_depths = [4.5, 3.5, 2.5, 1.5, 0.5, -0.5, -1.5, -2.5, -3.5, -4.5, -5.5, -6.5] .* 1.e3
+    today_areas = [0.5, 1.1, 2.2, 4.5, 20.9, 8.5, 3.0, 4.8, 13.9, 23.2, 16.4, 1.0]
+    today_cum_areas = []
+    today_cum_area = 0.0
     for i_data in 1:length(today_areas)
         today_cum_area += today_areas[i_data]
-        push!(today_cum_areas,today_cum_area)
+        push!(today_cum_areas, today_cum_area)
     end
     #today_cum_areas .*= 100.
 
     bin_thickness = 100
-    bin_depths = []    
+    bin_depths = []
     for bin_depth in 10000:-bin_thickness:-10000
-        push!(bin_depths,bin_depth)
+        push!(bin_depths, bin_depth)
     end
     n_bins = length(bin_depths)
-    bin_areas = fill(0.,n_bins)
+    bin_areas = fill(0.0, n_bins)
     for ix in 1:nx
         for iy in 1:ny
             #println(ix," ",iy)
-            ibin = search_sorted_below(bin_depths,world.freeboard[ix,iy])
-            ibin = max(1,ibin)
-            ibin = min(n_bins,ibin)
+            ibin = search_sorted_below(bin_depths, world.freeboard[ix, iy])
+            ibin = max(1, ibin)
+            ibin = min(n_bins, ibin)
             bin_areas[ibin] += areabox[iy]
         end
     end
-    bin_areas ./= volume_field(fill(1.,nx,ny))
-    cum_areas = fill(0.,n_bins)
+    bin_areas ./= volume_field(fill(1.0, nx, ny))
+    cum_areas = fill(0.0, n_bins)
     cum_areas[1] = bin_areas[1]
     for ibin in 2:n_bins
         cum_areas[ibin] = cum_areas[ibin-1] + bin_areas[ibin]
         #println(ibin)
     end
-    cum_areas .*= 100.
+    cum_areas .*= 100.0
     plot_title = string(Int(world.age)) * " Myr"
     variable_labels = ["cum. area"]
     Plots.plot(cum_areas, bin_depths, title=plot_title, label="model")
-    Plots.plot!(today_cum_areas,today_depths,label="obs. today")
+    Plots.plot!(today_cum_areas, today_depths, label="obs. today")
     Plots.xlabel!("Cumulative area")
     Plots.ylabel!("Depth, m")
     if image_file_name == ""
@@ -881,7 +906,6 @@ function plot_hypsometry(image_file_name::String="")
         Plots.savefig(image_file_name)
     end
 end
-    
 function plot_sediment_thickness_age(image_file_name::String="")
     bin_width = 5.0
     bin_max = 200
@@ -1015,6 +1039,172 @@ function animate_sed_thickness_age()
     rm(plot_type, force=true)
     cd(code_base_directory)
 end
+function extract_rotating_coordinate_list(plateID, plate_coordinate_list)
+    rotation_matrix = resolve_rotation_matrix!(plateID, world.age)
+    world_coordinate_list = []
+    for coord_pair in plate_coordinate_list
+        ix_plate = coord_pair[1]
+        iy_plate = coord_pair[2]
+        ix_world, iy_world =
+            nearest_worldij(rotation_matrix, ix_plate, iy_plate)
+        push!(world_coordinate_list, [ix_world, iy_world])
+    end
+    return world_coordinate_list
+end
+function plot_rotating_elevation_transect(plateID,
+    orientation, point_limits, lateral_point)
+
+    plate_coordinate_list = []
+    index_list = Float32[]
+    for itrans in point_limits[1]:point_limits[2]
+        if orientation == "horizontal"
+            push!(plate_coordinate_list, [itrans, lateral_point])
+        else
+            push!(plate_coordinate_list, [lateral_point, itrans])
+        end
+        push!(index_list, itrans)
+    end
+    world_coordinate_list =
+        extract_rotating_coordinate_list(plateID, plate_coordinate_list)
+    transect_length = size(world_coordinate_list)[1]
+    elevations = fill(0.0, transect_length, 4)
+    map_x = fill(0.0, transect_length)
+    map_y = fill(0.0, transect_length)
+    #index_list = fill(0., transect_length)
+
+    mark_transect_field = fill(0, nx, ny)
+    for i_step in 1:transect_length
+        coord_pair = world_coordinate_list[i_step]
+        ix = coord_pair[1]
+        iy = coord_pair[2]
+        map_x[i_step] = ix
+        map_y[i_step] = iy
+        mark_transect_field[ix, iy] = 1
+        elevations[i_step, 1] = world.sealevel + world.freeboard[ix, iy]
+        elevations[i_step, 2] = elevations[i_step, 1] -
+                                world.sediment_thickness[ix, iy]
+        elevations[i_step, 3] = world.sealevel
+        if world.crust_type[ix, iy] == continent_crust
+            elevations[i_step, 4] = world.sealevel + get_diag("target_elevation")[ix, iy]
+        else
+            elevations[i_step, 4] = NaN
+        end
+        #index_list[i_step] = coord_p
+    end
+    elevations ./= 1.e3
+    time_stamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(world.age) *
+                 ", Sea level = " * string(Int(floor(world.sealevel))) * " m"
+    axis_label = ""
+    if orientation == "horizontal"
+        axis_label = "Present-day longitude at " * string(ycoords[lateral_point]) * " latitude"
+    else
+        axis_label = "Present-day latitude at " * string(xcoords[lateral_point]) * " longitude"
+    end
+    #scene = Scene(resolution=(1000, 1400))  # GLMakie.lines([-180,180],[0,0],show_axis=false)
+    mapfield = mask_to_NaN(world.freeboard, mark_transect_field)
+    fig = Figure(resolution=(1000, 1200))
+    timestamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(world.age) *
+                ", Sea level = " * string(Int(floor(world.sealevel))) * " m"
+    map_ax = Axis(fig[1, 1], title=timestamp)
+    cmap = Reverse(elevation_colormap())
+    Makie.heatmap!(map_ax, xcoords, ycoords, mapfield ./ 1000.0, nan_color=:black, colormap=cmap, colorrange=(-10,10))
+    plot_ax = Axis(fig[2, 1], title="dashed = Scotese target")
+    Makie.ylims!(plot_ax, -10.0, 10.0)
+    pl = Makie.scatterlines!(plot_ax, index_list, elevations[:, 1], markersize=0, color=:brown)
+    pl = Makie.scatterlines!(plot_ax, index_list, elevations[:, 2], markersize=0, color=:black)
+    pl = Makie.scatterlines!(plot_ax, index_list, elevations[:, 3], markersize=0, color=:blue)
+    pl = Makie.scatterlines!(plot_ax, index_list, elevations[:, 4], markersize=0, color=:grey, linestyle=:dash)
+    #Makie.text!( fig,position=(180,190) )
+
+    return fig
+end
+#=
+    fig, ax1, hm1 = Makie.heatmap( mapfield, nan_color=:black )
+    ax2, pl2 = Makie.scatterlines(fig[end+1, 1], index_list, elevations[:,1], marker=nothing )
+    ax2, pl2 = Makie.scatterlines!( index_list, elevations[:,2], marker=nothing )
+
+    setup_plot_field!(scene, 0, 0)
+    plot_field_with_colortab!(scene,world.freeboard ./ 1.e3,-6,6,"freeboard")
+    Makie.scatterlines!( index_list, elevations[:,1] )
+
+
+    p1 = Plots.plot(index_list, elevations, legend=false, title=time_stamp,
+        xlabel=axis_label, ylimits=(-10, 10))
+    p2 = Plots.plot(map_x, map_y)
+    if image_file_name == ""
+        return
+    else
+        if image_file_name == "chart"
+            image_file_name = charts_directory * "/" * transect_name *
+                              "." * output_tag * ".png"
+        else
+            anim_directory = animation_directory * "/" * transect_name * "/"
+            image_file_name = anim_directory * image_file_name
+        end
+        println("saving ", image_file_name)
+        Plots.savefig(image_file_name)
+    end
+end =#
+function plot_laurentia_elevation_transect()
+    plateID = 101
+    orientation = "horizontal"
+    point_limits = [30, 150]
+    lateral_point = 125
+    scene = plot_rotating_elevation_transect(plateID,
+        orientation, point_limits, lateral_point)
+    return scene
+end
+#=
+function animate_laurentia_elevation_transect()
+
+    cd(animation_directory)
+    plot_type = "laurentian_elevation_transect"
+    if plot_type in readdir()
+    else
+        mkdir(plot_type)
+        println("creating ", plot_type)
+    end
+    cd(plot_type)
+    starting_file_list = readdir()
+    image_number = 0
+    ages = [animation_final_age]
+    for age in animation_initial_age:-main_time_step*animation_n_step:animation_final_age
+        main_time_step*animation_n_step:animation_final_age
+        push!(ages, age)
+    end
+    plateID = 101
+    orientation = "horizontal"
+    point_limits = [30, 150]
+    lateral_point = 130
+    for age in ages
+        image_number += 1
+        image_file_name = "img." * lpad(image_number, 3, "0") * ".png"
+        if image_file_name in starting_file_list
+            println("already done ", age, " ", image_file_name)
+        else
+            println("creating ", age, " ", image_file_name)
+            global world = read_world(age)
+            plot_rotating_elevation_transect(plateID,
+                orientation, point_limits, lateral_point,
+                image_file_name, plot_type)
+        end
+    end
+    mp4_file = "../" * plot_type * "." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm(mp4_file, force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cp("img.001.png", "../" * plot_type * "." * output_tag * ".png", force=true)
+    for imgfile in readdir()
+        rm(imgfile)
+    end
+    cd(animation_directory)
+    rm(plot_type, force=true)
+    cd(code_base_directory)
+end =#
+
+#
+
+
 function animate_scotese_elevation()
     cd(animation_directory)
     plot_type = "scotese_elevation"
@@ -1040,8 +1230,8 @@ function animate_scotese_elevation()
             global world = read_world(age)
             scotese_elevation, scotese_age = nearest_scotese_elevation()
             ice_masked_freeboard = mask_to_NaN(world.freeboard,
-                eq_mask(world.geomorphology,ice_sheet_covered))
-            scene = plot_two_fields(ice_masked_freeboard, scotese_elevation, -4000, 4000, "freeboard")
+                eq_mask(world.geomorphology, ice_sheet_covered))
+            scene = plot_two_fields(ice_masked_freeboard, scotese_elevation, -6000, 6000, "freeboard")
             gridplatestimestamp = string(Int(floor(world.age))) *
                                   " Myr, " * get_geo_interval(age) *
                                   ", " * string(world.sealevel) * " m sea level"
@@ -1077,34 +1267,111 @@ function animate_scotese_elevation()
     rm(plot_type, force=true)
     cd(code_base_directory)
 end
+function animate_sediment_slices()
+    global world = read_world(0)
+    etopo = read_flip_csv(
+        code_base_directory * "/data/" * "etopo.csv")
+    sedthick = read_real_csv(code_base_directory * "/data/" * "sedthick.csv")
 
-#function animate_first_priority()
+    cd(animation_directory)
+    plot_type = "sediment_slices"
+    if plot_type in readdir()
+    else
+        mkdir(plot_type)
+        println("creating ", plot_type)
+    end
+    cd(plot_type)
 
+    image_number = 0
+    starting_file_list = readdir()
+    for iy in 1:ny
+        image_number += 1
+        image_file_name = "img." * lpad(image_number, 3, "0") * ".png"
+        if image_file_name in starting_file_list
+            println("already done ", iy, " ", image_file_name)
+        else
+            println("creating ", iy, " ", image_file_name)
+            model_elevations = fill(0.0, nx, 2)
+            model_elevations[:, 1] = world.sealevel .+ world.freeboard[:, iy] ./ 1.e3
+            model_elevations[:, 2] = model_elevations[:, 1] -
+                                     world.sediment_thickness[:, iy] ./ 1.e3
+            #model_elevations[:,3] = world.sealevel
+            data_elevations = fill(0.0, nx, 2)
+            data_elevations[:, 1] = etopo[:, iy] ./ 1.e3
+            data_elevations[:, 2] = data_elevations[:, 1] -
+                                    sedthick[:, iy] ./ 1.e3
+            lat_string = "Latitude " * string(Int(floor(ycoords[iy])))
+            mark_transect_field = fill(0.0, nx, ny)
+            mark_transect_field[:, iy] .= 1.0
+            mapfield = mask_to_NaN(world.freeboard, mark_transect_field)
+            fig = Figure(resolution=(1000, 1200))
+            lat_stamp = string(ycoords[iy]) * " Degrees Latitude"
+            map_ax = Axis(fig[1, 1], title=lat_stamp)
+            cmap = Reverse(elevation_colormap())
+            Makie.heatmap!(map_ax, xcoords, ycoords, mapfield ./ 1000.0, nan_color=:black, colormap=cmap, colorrange=(-10, 10)) #, colorrange=(-10,10))
+            plot1_ax = Axis(fig[2, 1], title="Model")
+            Makie.ylims!(plot1_ax, -10.0, 10.0)
+            Makie.scatterlines!(plot1_ax, xcoords, model_elevations[:, 1], markersize=0, color=:brown)
+            Makie.scatterlines!(plot1_ax, xcoords, model_elevations[:, 2], markersize=0, color=:black)
+            plot2_ax = Axis(fig[3, 1], title="Etopo + Obs. Sediment thickness")
+            Makie.ylims!(plot2_ax, -10.0, 10.0)
+            Makie.scatterlines!(plot2_ax, xcoords, data_elevations[:, 1], markersize=0, color=:brown)
+            Makie.scatterlines!(plot2_ax, xcoords, data_elevations[:, 2], markersize=0, color=:black)
+            Makie.save(image_file_name, fig)
+            #Makie.text!( fig,position=(180,190) )
+
+            #return fig
+
+
+
+            #p1 = Plots.plot( xcoords, model_elevations, title=lat_string, label=["model freeboard" "basement"], ylimits=(-10.,10) )
+            #p2 = Plots.plot( xcoords, data_elevations, label=["etopo" "etopo - sedthick"], xlabel="longitude",ylimits=(-10.,10) )
+            #Plots.plot( p1, p2, layout=(2,1),sizes=(600,600) )
+            #println("saving ", image_file_name)
+            #Plots.savefig(image_file_name)
+        end
+    end
+    mp4_file = "../sediment_slices." * output_tag * ".mp4"
+    println("compiling ", mp4_file)
+    rm(mp4_file, force=true)
+    run(`ffmpeg -r 2 -f image2 -s 1920x1080 -i img.%03d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $mp4_file`)
+    cp("img.090.png", "../" * plot_type * "." * output_tag * ".png", force=true)
+    for imgfile in readdir()
+        rm(imgfile)
+    end
+    cd(animation_directory)
+    rm(plot_type, force=true)
+    cd(code_base_directory)
+end
 function animate_until_you_almost_puke()
     animate(plot_elevation, "elevation")
     animate(plot_pct_CaCO3, "pct_CaCO3")
-    animate(plot_pct_CaO_CaCO3_free, "pct_CaO_CaCO3_free")
-    animate(plot_weathering_index, "weathering_index")
-    animate(plot_CaO_weathering_rate, "CaO_weathering_rate")
+    #animate(plot_pct_CaO_CaCO3_free, "pct_CaO_CaCO3_free")
+    #animate(plot_weathering_index, "weathering_index")
+    #animate(plot_CaO_weathering_rate, "CaO_weathering_rate")
     animate(plot_sediment_thickness, "sediment_thickness")
-    animate(plot_sedimentation_rate, "sedimentation_rate")
 end
 function animate_the_rest()
-    animate( plot_lithosphere_thickness, "lithosphere_thickness" )
-    animate( plot_crust_age, "crust_age" )
+    animate(plot_lithosphere_thickness, "lithosphere_thickness")
+    animate(plot_crust_age, "crust_age")
     animate(plot_crust_thickness, "crust_thickness")
-    animate(plot_elevation_misfit, "elevation_misfit")
-    animate( plot_crust_thickening_rate, "crust_thickening_rate" )
+    #animate(plot_elevation_misfit, "elevation_misfit")
+    #animate( plot_crust_thickening_rate, "crust_thickening_rate" )
     animate(plot_runoff, "runoff")
     animate(plot_CaCO3_sedimentation_rate, "CaCO3_sedimentation_rate")
-    animate(plot_shallow_water_depth,"shallow_water_depth")
+    animate(plot_CaCO3_weathering_rate, "CaCO3_weathering_rate")
+    animate( plot_weathering_age, "weathering_age" )
+    #animate(plot_shallow_water_depth,"shallow_water_depth")
     animate_sed_thickness_age()
     #animate_scotese_elevation()
     animate_hypsometry()
 end
 function animate_some_more()
-    animate( plot_crust_type, "crust_type" )
-    animate_scotese_elevation()
+    animate(plot_sedimentation_rate, "sedimentation_rate")
+    animate(plot_crust_type, "crust_type")
+    #animate_scotese_elevation()
+    animate_sediment_slices()
+    animate(plot_laurentia_elevation_transect, "laurentia_elevation_transect")
 end
 # Makie map plots
 
@@ -1158,7 +1425,7 @@ function create_timeseries_charts(age)
 
         subduction_rates[1:n_sediment_types, i_time_point] .= (
             world.subducted_ocean_sediment_volumes .+
-            world.subducted_land_sediment_volumes ) / main_time_step
+            world.subducted_land_sediment_volumes) / main_time_step
         for i_sedtype in 1:n_sediment_types
             land_inventory_timeseries[0, i_time_point] += land_inventory_timeseries[i_sedtype, i_time_point]
             ocean_inventory_timeseries[0, i_time_point] += ocean_inventory_timeseries[i_sedtype, i_time_point]
@@ -1221,7 +1488,7 @@ function create_timeseries_charts(age)
         mean_continental_crust_thickness[i_time_point] = field_mean(world.crust_thickness, is_continent_crust)
         continental_crust_volume[i_time_point] = volume_field(world.crust_thickness .* is_continent_crust)
         continental_crust_area[i_time_point] = volume_field(is_subaereal)
-        ocean_volume[i_time_point] = - volume_field(world.freeboard .* lt_mask(world.freeboard, 0))
+        ocean_volume[i_time_point] = -volume_field(world.freeboard .* lt_mask(world.freeboard, 0))
         mean_ocean_crust_age[i_time_point] = field_mean(world.crust_age, is_ocean_crust)
     end
     n_time_points = length(time_points)
@@ -1450,7 +1717,7 @@ function create_timeseries_charts(age)
         # using land_sediment_fraction_erosion_rate
         # % fresh input 
         =#
-
+        
         plot_title = "clay fluxes"
         variable_labels = ["prod" "land deposition" "runoff" "ocean deposition" "subduction" "change" "bal"]
         linestyles = [:solid :solid :solid :dash :dash :dash :solid]
@@ -1460,14 +1727,14 @@ function create_timeseries_charts(age)
         variable_point_array = fill(0.0, n_time_points, n_lines)
         variable_point_array[:, 1] = frac_diags_timeseries[
             frac_diag_index("denuded_crust_erosion_fraction_rate"), clay_sediment, :] .+
-            frac_diags_timeseries[
+                                     frac_diags_timeseries[
             frac_diag_index("ice_sheet_crust_erosion_fraction_rate"), clay_sediment, :]
         variable_point_array[:, 2] = frac_diags_timeseries[
             frac_diag_index("land_sediment_fraction_transport_deposition_rate"), clay_sediment, :]
         variable_point_array[:, 3] = frac_diags_timeseries[
             frac_diag_index("coastal_sediment_fraction_runoff_flux"), clay_sediment, :]
         variable_point_array[:, 4] = frac_diags_timeseries[
-            frac_diag_index("ocean_crust_sediment_fraction_deposition_rate"), clay_sediment, :]
+            frac_diag_index("submarine_sediment_fraction_deposition_rate"), clay_sediment, :]
         variable_point_array[:, 5] = subduction_rates[clay_sediment, :]
         variable_point_array[:, 6] = step_changes[clay_sediment, :]
         variable_point_array[:, 7] = variable_point_array[:, 6] + # step_changes
@@ -1559,7 +1826,7 @@ function create_timeseries_charts(age)
         #    "land_orogenic_Ca_source_rates"), :] # direct orogenic Ca dissolution
         variable_point_array[:, 1] = frac_diags_timeseries[
             frac_diag_index("denuded_crust_erosion_fraction_rate"), CaO_sediment, :] .+
-            frac_diags_timeseries[
+                                     frac_diags_timeseries[
             frac_diag_index("denuded_crust_erosion_fraction_rate"), CaO_sediment, :]
         variable_point_array[:, 2] = frac_diags_timeseries[
             frac_diag_index("ice_sheet_crust_erosion_fraction_rate"), CaO_sediment, :]
@@ -1627,13 +1894,13 @@ function create_timeseries_charts(age)
         variable_point_array = fill(0.0, n_time_points)
         tot_CaO_diss = diags_timeseries[diag_index(
             "land_orogenic_Ca_source_rates"), :] .+
-            frac_diags_timeseries[
-                frac_diag_index("land_sediment_fraction_dissolution_rate"), CaO_sediment, :]
+                       frac_diags_timeseries[
+            frac_diag_index("land_sediment_fraction_dissolution_rate"), CaO_sediment, :]
         tot_CaO_prod = tot_CaO_diss .+
-            frac_diags_timeseries[
-                frac_diag_index("denuded_crust_erosion_fraction_rate"), CaO_sediment, :] .+
-            frac_diags_timeseries[
-                frac_diag_index("ice_sheet_crust_erosion_fraction_rate"), CaO_sediment, :]
+                       frac_diags_timeseries[
+            frac_diag_index("denuded_crust_erosion_fraction_rate"), CaO_sediment, :] .+
+                       frac_diags_timeseries[
+            frac_diag_index("ice_sheet_crust_erosion_fraction_rate"), CaO_sediment, :]
         variable_point_array = tot_CaO_diss ./ tot_CaO_prod .* 100.0
         plot_time_series(time_points, variable_point_array, plot_title,
             variable_labels,
@@ -1821,8 +2088,8 @@ function create_timeseries_charts(age)
     variable_labels = [""] # * 10" "ocean mean" "max"]
     units_label = "m3"
     n_lines = length(variable_labels)
-    variable_point_array = fill(0.0, n_time_points,n_lines)
-    variable_point_array[:,1] = ocean_volume[:]
+    variable_point_array = fill(0.0, n_time_points, n_lines)
+    variable_point_array[:, 1] = ocean_volume[:]
     plot_time_series(time_points, variable_point_array, plot_title,
         variable_labels,
         linestyles, linewidths, units_label)
@@ -1863,7 +2130,6 @@ function accumulate_values!(variable_point_array)
     end
     return variable_point_array
 end
-
 function plot_time_series(time_points, variable_point_array,
     plot_title, variable_labels,
     linestyles, linewidths, units_label)
@@ -2001,7 +2267,7 @@ function plot_compare_sedthick()
     Plots.plot(sedthick[107:167, 120], title="Atlantic Sediment Thickness Transect", label="obs")
     Plots.plot!(world.sediment_thickness[107:167, 120], label="model")
     file_label = charts_directory * "/" *
-        "sedthick_Atl_transect_compare." * output_tag * ".png"
+                 "sedthick_Atl_transect_compare." * output_tag * ".png"
     println("saving ", file_label)
     Plots.savefig(file_label)
 end
@@ -2025,14 +2291,43 @@ function zoom_works!(scene)
     return scene
 end
 function zoom_crop_field(field)
-    ixleft = max(1, zoomplot_ix - zoomplot_size)
+    plot_size = 2 * zoomplot_size + 1
+    subfield = fill(0., plot_size, plot_size)
+    subx = fill(0, plot_size); suby = fill(0, plot_size)
+    subx[1] = zoomplot_ix - zoomplot_size; suby[1] = zoomplot_iy - zoomplot_size
+    for i_point in 2:plot_size
+        subx[i_point] = subx[i_point-1] + 1
+        suby[i_point] = suby[i_point-1] + 1
+    end
+    for ixc in 1:plot_size
+        for iyc in 1:plot_size
+            #println(ixc," ",iyc)
+            ix = subx[ixc]
+            if ix <= 0
+                ix += 360
+            end
+            iy = suby[iyc]
+            if iy > 0 && iy <= ny
+                subfield[ixc,iyc] = field[ix,iy]
+            else
+                subfield[ixc,iy] = NaN
+            end 
+        end
+    end
+
+    #=ixleft = max(1, zoomplot_ix - zoomplot_size)
     ixright = min(nx, zoomplot_ix + zoomplot_size)
     iybelow = max(1, zoomplot_iy - zoomplot_size)
     iyabove = min(ny, zoomplot_iy + zoomplot_size)
     subfield = field[ixleft:ixright, iybelow:iyabove]
     subx = xcoords[ixleft:ixright]
-    suby = ycoords[iybelow:iyabove]
+    suby = ycoords[iybelow:iyabove] =#
     return subx, suby, subfield
+end
+function zoom_add_mask_contour(maskfield, scene)
+    subx, suby, subfield = zoom_crop_field(maskfield)
+    Makie.contour!(scene, subx, suby, subfield, color=:white)
+    return scene
 end
 function zoom_add_plate_boundaries!(scene)
     for plateID in world.plateIDlist
@@ -2056,7 +2351,7 @@ function zoom_add_continent_outlines!(scene)
 end
 function zoom_add_orogeny!(scene)
 
-    exposed_basement_field = eq_mask(world.geomorphology, exposed_basement)
+    exposed_basement = eq_mask(world.geomorphology, exposed_basement)
     subx, suby, subfield = zoom_crop_field(exposed_basement_field)
     Makie.contour!(scene, subx, suby, subfield, color=:orange)
 
@@ -2165,23 +2460,27 @@ function plot_field_with_colortab!(scene, field, minval, maxval, xoffset, yoffse
     #text!(scene,string(Int(floor(maxval))),position=(190,85),textsize=10)
     cmap = Reverse(:lightrainbow)
     if style == "freeboard"
-        ice_sheet = colorant"white"
-        deepocean = colorant"midnightblue"
-        lowfield = range(ice_sheet,stop=deepocean,length=2)
-        shallowocean = colorant"turquoise1"
-        ocean_cmap = range(deepocean, stop=shallowocean, length=100)
-        lowland = colorant"darkgreen"
-        upland = colorant"moccasin"
-        highfield = [colorant"black"]
-        land_cmap = range(lowland, stop=upland, length=100)
-        cmap = vcat(ocean_cmap, land_cmap)
-        cmap = Reverse(cmap)
+        cmap = elevation_colormap()
         #cmap2 = vcat(lowfield,cmap)
         #cmap = vcat(cmap,highfield)
     end
     Makie.heatmap!(scene, xplotcoords .+ xoffset, ycoords .+ yoffset, colorfield,
-        colorrange=(maxval, minval), colormap=cmap, nan_color=:white )#thermometer)#lightrainbow)
+        colorrange=(maxval, minval), colormap=cmap, nan_color=:white)#thermometer)#lightrainbow)
     return scene
+end
+function elevation_colormap()
+    ice_sheet = colorant"white"
+    deepocean = colorant"midnightblue"
+    lowfield = range(ice_sheet, stop=deepocean, length=2)
+    shallowocean = colorant"turquoise1"
+    ocean_cmap = range(deepocean, stop=shallowocean, length=100)
+    lowland = colorant"darkgreen"
+    upland = colorant"moccasin"
+    highfield = [colorant"black"]
+    land_cmap = range(lowland, stop=upland, length=100)
+    cmap = vcat(ocean_cmap, land_cmap)
+    cmap = Reverse(cmap)
+    return cmap
 end
 function plot_add_title!(scene, title)
     text!(scene, title, position=(-180, 110), textsize=25)
@@ -2195,6 +2494,10 @@ function plot_add_timestamp!(scene, age, xpos, ypos)
     timestamp = string(Int(floor(world.age))) * " Myr, " * get_geo_interval(age) *
                 ", Sea level = " * string(Int(floor(world.sealevel))) * " m"
     text!(scene, timestamp, position=(xpos, ypos), textsize=15)
+    return scene
+end
+function plot_add_mask_contour(maskfield,scene)
+    Makie.contour!(scene, xcoords, ycoords, maskfield, color=:white)
     return scene
 end
 function plot_add_plate_boundaries!(scene)
@@ -2270,7 +2573,7 @@ function plot_add_altitude_contour!(scene, altitude)
 end
 function plot_add_continent_outlines!(scene)
     continentmask = get_continent_mask()
-    Makie.contour!(scene, xcoords, ycoords, continentmask, color=:green)
+    Makie.contour!(scene, xcoords, ycoords, continentmask, color=:brown)
     return scene
 end
 function plot_add_alt_continent_outlines!(scene)
@@ -2633,7 +2936,7 @@ function add_sphereplot_wig!(scene, field, maskfield, rotationmatrix)
 
         end
     end
-    surface!(x, y, z, color=colorfield, show_axis=false,cmap)
+    surface!(x, y, z, color=colorfield, show_axis=false, cmap)
     return scene
 end
 function add_sphereplot_continent_outlines!(scene)

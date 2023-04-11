@@ -62,8 +62,12 @@ function run_timeseries()
             world.age >= time_interval
             save_plates()
         end
+        if world.age == 585
+            save_plates()
+        end
         flush(log_IO)
     end
+
     close(log_IO)
 end
 #world = read_world(465)

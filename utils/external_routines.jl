@@ -538,7 +538,7 @@ function build_real_world()
                     1.0 - world.sediment_fractions[ix, iy, reactive_clay]
             elseif lithology_grid[ix, iy] in [1, 2, 4, 7, 8, 9, 10]
                 world.sediment_thickness[ix, iy] = 0.0
-                world.geomorphology[ix, iy] = exposed_basement
+                world.geomorphology[ix, iy] = exposed_basement_or_CaCO3
                 if lithology_grid[ix, iy] in [2, 4] # basic volcanic, plutonic rocks
                     world.crust_composition[ix, iy] = 0.0 # mafic             # mafic# mafic
                 elseif lithology_grid[ix, iy] in [1, 3, 13]

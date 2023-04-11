@@ -5,10 +5,12 @@ function get_scotese_mountains()
                    age_string * "Ma.bson"
     BSON.@load CS_file_name elevation
     rotated_elevation = rotate_field_0_to_current_age(elevation)
+
+    #smooth_area!( values, blob, diffcoeff )
+    smooth_world!( rotated_elevation, 1.e10 )
     set_diag("target_elevation", rotated_elevation)
     #target_elevation = fill_world_orogeny( twisted_elevation )
 
-    #smooth_world!( target_elevation, 1000. )
     return rotated_elevation
 end
 function rotate_field_0_to_current_age( field_at_time_0 )
@@ -470,16 +472,13 @@ function partition_erosion_sediment_fluxes( ix,iy,erosion_rate )
 end
 
 function get_denuded_sediment_fluxes( denuded_mask )
-    #orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
-    #    is_land() 
     denuded_sediment_fluxes = fill(0.,nx,ny,0:n_sediment_types)
     for ix in 1:nx
         for iy in 1:ny
             if denuded_mask[ix,iy] == 1
                 for i_sedtype in first_land_transported_sediment:n_sediment_types
                     denuded_sediment_fluxes[ix,iy,i_sedtype] = 
-                        world.sediment_thickness[ix,iy] * 
-                        world.sediment_fractions[ix,iy,i_sedtype] / main_time_step
+                        world.sediment_inventories[ix,iy,i_sedtype] / main_time_step
                     denuded_sediment_fluxes[ix,iy,0] += denuded_sediment_fluxes[ix,iy,i_sedtype]
                 end
             end
@@ -588,104 +587,6 @@ function update_flux_totals!(fluxfield)
         fluxfield[:,:,0] += fluxfield[:,:,i_sedtype]
     end
 end
-#=
-                denuded_sediment_flux[ix,iy,i_sedtype] -= source_meter_flux
-                denuded_sediment_flux[ix,iy,0] -= source_meter_flux
-        for i_sedtype in 1:n_sediment_types
-            integrated_flux = volume_field( fluxes[ :,:,i_sedtype ] .* blob )
-            deposition_flux = integrated_flux / neighbor_blob_areas[ i_blob ]
-            for ix in 1:nx
-                for iy in 1:ny
-                    if neighbor_blobs[i_area][ix,iy] > 0
-                        output_fluxes[ix,iy,i_sedtype] = deposition_flux
-                    end
-                end
-            end
-        end
-    end
-    return output_fluxes
-end
-
-
-
-        orogenic_mass_flux = orogenic_production_rates[i_area] / # m3 / Myr
-            neighbor_blob_areas[i_area]  # meters / Myr
-        denuded_mass_flux = denuded_sediment_production_rates[i_area] / 
-            neighbor_blob_areas[i_area]
-        for ix in 1:nx
-            for iy in 1:ny
-                if neighbor_blobs[i_area][ix,iy] > 0
-                    if world.geomorphology[ix,iy] == sedimented_land
-                        accum_diag("land_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
-                    elseif world.geomorphology[ix,iy] < sedimented_land # ocean
-                        accum_diag("coastal_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
-                    end
-                    for i_sedtype in 1:n_sediment_types
-                        accum_frac_diag("denuded_land_boundary_fraction_flux",
-                            ix,iy,i_sedtype,denuded_mass_flux)
-                    end
-                end
-            end
-        end
-    end
-    if verbose == true
-        orogenic_area = volume_field(orogenic_crust_mask)
-        avg_oro_elev = field_mean( world.freeboard .* orogenic_crust_mask )
-        crust_clay_source = volume_field(get_diag("land_orogenic_clay_flux")) +
-            volume_field(get_diag("coastal_orogenic_clay_flux"))
-        println(" area ",orogenic_area," avg elevation ",avg_oro_elev,
-            " clay src ", crust_clay_source)
-    end
-end
-=#
-function generate_orogenic_erosion_fluxes_original()
-    # resets then accumulates land_orogenic_clay_flux and coastal_orogenic_clay_flux
-    # also sets cruse_erosion_rate,
-    # doesnt need to accumulate since there will be no overlap of orogenic areas.
-    # uses exposed_basement
-    verbose = false
-    reset_diag("land_orogenic_clay_flux")
-    reset_diag("coastal_orogenic_clay_flux")
-    orogenic_crust_mask = eq_mask( world.geomorphology,exposed_basement ) .*
-        eq_mask( world.crust_type,continent_crust )
-    orogenic_blobs = get_blobs( orogenic_crust_mask )
-    orogenic_blob_areas = get_blob_areas( orogenic_blobs )
-    orogenic_production_rates = get_integrated_orogenic_production_rates( orogenic_blobs )
-    denuded_sediment_production_rates = get_integrated_denuded_sediment_rates( orogenic_blobs )
-    # fills crust_erosion_rate and crust_clay_source_rate, 
-    # returns blob-integrated rates in an array[nblobs]
-    neighbor_blobs = get_blob_neighbor_fields( orogenic_blobs )
-    neighbor_blob_areas = get_blob_areas( neighbor_blobs )
-    for i_area in 1:length( orogenic_blobs )
-        orogenic_mass_flux = orogenic_production_rates[i_area] / # m3 / Myr
-            neighbor_blob_areas[i_area]  # meters / Myr
-        denuded_mass_flux = denuded_sediment_production_rates[i_area] / 
-            neighbor_blob_areas[i_area]
-        for ix in 1:nx
-            for iy in 1:ny
-                if neighbor_blobs[i_area][ix,iy] > 0
-                    if world.geomorphology[ix,iy] == sedimented_land
-                        accum_diag("land_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
-                    elseif world.geomorphology[ix,iy] < sedimented_land # ocean
-                        accum_diag("coastal_orogenic_clay_flux",ix,iy,orogenic_mass_flux)
-                    end
-                    for i_sedtype in 1:n_sediment_types
-                        accum_frac_diag("denuded_land_boundary_fraction_flux",
-                            ix,iy,i_sedtype,denuded_mass_flux)
-                    end
-                end
-            end
-        end
-    end
-    if verbose == true
-        orogenic_area = volume_field(orogenic_crust_mask)
-        avg_oro_elev = field_mean( world.freeboard .* orogenic_crust_mask )
-        crust_clay_source = volume_field(get_diag("land_orogenic_clay_flux")) +
-            volume_field(get_diag("coastal_orogenic_clay_flux"))
-        println(" area ",orogenic_area," avg elevation ",avg_oro_elev,
-            " clay src ", crust_clay_source)
-    end
-end
 
 function orogeny_intensity(uplift)
     total = 0.
@@ -699,15 +600,6 @@ function orogeny_intensity(uplift)
     return total
 end
 function calculate_orogenic_erosion_rate( freeboard ) # meters / Myr
-#= 
-    initial_tau = 100; longterm_tau = 250.; cutoff_elevation = 2000.
-    if freeboard > cutoff_elevation
-        erosion_rate = max(2000.,freeboard) / initial_tau 
-    else
-        erosion_rate = freeboard / longterm_tau
-    end
-=#
-    #tau_apparent = 30.  # Myr
     tau = orogenic_erosion_tau_apparent * crust_freeboard_expression
     erosion_rate = freeboard / tau
     return erosion_rate # meters of crust / Myr

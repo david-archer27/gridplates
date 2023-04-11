@@ -31,8 +31,12 @@ mutable struct world_struct
     crust_lost_to_erosion
     geomorphology    # for sediment transport, subaereal or submarine
     tectonics
-    sediment_thickness  # total thickness
+    sediment_thickness  # including CaCO3 
+    regolith_thickness  # mobile fraction
+    sediment_porosity
+    sediment_weathering_age
     sediment_fractions # x,y,sed type 
+    #sediment_transporting_fractions # x,y,first:sedtype 
     sediment_inventories
     #sediment_layer_thickness # x,y,time_bins, not used on land points
     #sediment_layer_fractions  # x, y, sed type, time_bin
@@ -57,8 +61,10 @@ mutable struct plate_struct
     tectonics
     #potential_uplift 
     sediment_thickness  # geologic record, dimensions of x,y
+    sediment_porosity
+    sediment_weathering_age
     sediment_fractions # x,y,sed type 
-    #sediment_inventories # in meters
+    sediment_inventories # in meters
     #sediment_layer_thickness # x,y,time_bins, not used on land points
     #sediment_layer_fractions  # x, y, sed type, time_bin
     rotationmatrix  # 3x3 heirarchy-resolved rotation matrix
@@ -91,9 +97,9 @@ world_diag_names = [
     "land_sediment_deposition_rate",
     "land_Q_runoff_field",
     "land_sediment_weathering_index",
-    "ocean_crust_sediment_deposition_rate",
+    "submarine_sediment_deposition_rate",
     "global_sediment_deposition_rate",
-    "world_grid_sediment_change",
+    #"world_grid_sediment_change",
     "coastal_CaCO3_flux",
     "pelagic_CaCO3_deposition_rate",
     "seafloor_delta_CO3"]
@@ -119,7 +125,7 @@ world_frac_diag_names = [
     #"land_trapped_sediment_rate",
     "coastal_sediment_fraction_runoff_flux",
     "ocean_sediment_fraction_influx",
-    "ocean_crust_sediment_fraction_deposition_rate",
+    "submarine_sediment_fraction_deposition_rate",
     #"seafloor_sediment_fraction_overflow",
     "global_sediment_fraction_deposition_rate",
     "global_sediment_fraction_deposition_ratio"]
@@ -145,8 +151,7 @@ for iy in 1:ny
     delta_x[iy] = 110.e3 * cos(ycoords[iy] / 180.0 * pi) # m
     n_equiv_boxes[iy] = Int(floor(delta_y / delta_x[iy]))
 end
-shelf_depth_clastics = -100.0;
-shelf_depth_CaCO3 = 0.0;
+shelf_depth = -10.0
 
 log_IO = 0 # dummy file handle for log output file
 
@@ -155,8 +160,9 @@ ocean_crust = 1
 continent_crust = 2
 
 # world.geomorphology
-ice_sheet_covered = 3
-exposed_basement = 2
+ice_sheet_covered = 4
+exposed_basement = 3
+exposed_CaCO3 = 2
 sedimented_land = 1
 under_water = 0
 filled_basin = -1
@@ -204,7 +210,7 @@ geo_interval_time_bins = Float64[540, 485, 444, 419,  # these are the beginnings
 geo_interval_names = ["Cambrian", "Ordovician", "Silurian", "Devonian",
     "Carboniferous", "Permian", "Triassic", "Jurassic", "Cretaceous",
     "Paleocene", "Eocene", "Oligocene", "Miocene", "Pliocene", "Pleistocene"]
-sealevel_timepoints = [550.0, 500.0, 450.0, 250.0, 75.0, 0.0]
+sealevel_timepoints = [540.0, 520.0, 450.0, 250.0, 75.0, 0.0]
 sealevel_values = [0.0, 0.0, 400.0, 0.0, 250.0, 0.0]
 
 #sealevel_timepoints = [550.0, 500.0, 480.0, 250.0, 75.0, 0.0]
@@ -221,7 +227,7 @@ sealevel_values = [0.0, 0.0, 400.0, 0.0, 250.0, 0.0]
 #sealevel_timepoints = [100.,0.]
 #sealevel_values = [0.,0.]
 
-output_tag = "friday_3_10"
+output_tag = "tuesday_4_11"
 
 code_base_directory = pwd() # "gridplates"
 plateID_input_directory = code_base_directory * "/plates"
@@ -250,7 +256,7 @@ save_plate_transplants_image_number = 0
 enable_land_runoff = true
 enable_aolean_transport = true
 enable_cont_update_from_files = true
-enable_crust_cont2ocn = false
+enable_crust_cont2ocn = true
 enable_crust_ocn2cont = true
 enable_orogeny = true
 #enable_subduction_orogeny = false
@@ -260,6 +266,8 @@ enable_sealevel_change = true
 enable_geomorph = true
 enable_atmCO2_change = false
 enable_continental_CaCO3_deposition = true
+enable_pelagic_CaCO3_deposition = true
+enable_coastal_CaCO3_deposition = true
 enable_CaCO3_land_diss_ocean_repcp = true
 enable_subaereal_sediment_dissolution = true
 #enable_watch_plate_transplant_misses = false
@@ -286,8 +294,16 @@ rho_ocean_crust = 2.9
 rho_continent_crust = 2.7
 rho_lithosphere = 3.375
 rho_mantle = 3.313
-rho_sediment = 2.7
+rho_compacted_sediment = 2.7
 rho_seawater = 1.024
+porosity_continental_sediment = 0.25
+porosity_ocean_sediment = 0.5
+rho_bulk_continental_sediment = rho_compacted_sediment *
+                                (1.0 - porosity_continental_sediment) +
+                                rho_seawater * porosity_continental_sediment
+rho_bulk_ocean_sediment = rho_compacted_sediment *
+                          (1.0 - porosity_ocean_sediment) +
+                          rho_seawater * porosity_ocean_sediment
 thermal_diffusivity = 2.55e7 # m2 / Myr
 thermal_expansion = 3.3e-5
 max_lithosphere_thickness = 95.e3
@@ -296,23 +312,24 @@ max_lithosphere_thickness = 95.e3
 #                     (rho_mantle - rho_continent_crust)
 #reference_elevation_cont_0 = continent_crust_h0 /
 #                             (1.0 + ref_root_over_foot)
-subaereal_sediment_freeboard_expression = 1.0 - rho_sediment / rho_mantle
-submarine_sediment_freeboard_expression = 1.0 - (rho_sediment - rho_seawater) /
-                                                (rho_mantle - rho_seawater)
+subaereal_sediment_freeboard_expression = 1.0 -
+                                          rho_bulk_continental_sediment / rho_mantle
+submarine_sediment_freeboard_expression = 1.0 -
+                                          (rho_bulk_ocean_sediment - rho_seawater) / (rho_mantle - rho_seawater)
 crust_freeboard_expression = 1.0 - rho_continent_crust / rho_mantle
 continent_lithosphere_thickness = 135.e3
 mantle_T0 = 2000.0
 ocean_T0 = 0.0
 
 # geomorphology parameters
-orogeny_smooth_coeff = 1000.0
+#orogeny_smooth_coeff = 1000.0
 crust_smooth_coeff = 1000.0
-orogenic_base_uplift_meters = 2.e4 # from 16 -> 35 km through the event
-orogenic_uplift_parameter = 600.0 # m / Myr base
-subduction_orogeny_parameter = 7500.0
-subduction_orogeny_smooth_coeff = 1.e4
-subduction_orogeny_hor_offset = 5 * delta_y
-mountain_max_altitude_target = 10.e3 # m
+#orogenic_base_uplift_meters = 2.e4 # from 16 -> 35 km through the event
+#orogenic_uplift_parameter = 600.0 # m / Myr base
+#subduction_orogeny_parameter = 7500.0
+#subduction_orogeny_smooth_coeff = 1.e4
+#subduction_orogeny_hor_offset = 5 * delta_y
+#mountain_max_altitude_target = 10.e3 # m
 #max_uplift_rate_target = 600.0 # m / Myr
 #mean_elevation_land_target = 800.0 # m
 #orogenic_area_fraction_target = 0.1
@@ -327,10 +344,10 @@ ice_sheet_erosion_rate = 10.0 # mm/kyr = m/Myr from Jansen 2019
 
 #land_base_diffcoeff *= 0.2 # 0.5
 
-land_base_diffcoeff = 3750.0 # 7500.0
+land_base_diffcoeff = 3.e10 # m2 / Myr # 7500.0
 
 #orogenic_erosion_tau_apparent *= 2.0
-orogenic_erosion_tau_apparent = 33.3
+orogenic_erosion_tau_apparent = 20.0 # 8.0 # 50. # 33.3
 ice_sheet_erosion_tau_apparent = 2.0 * orogenic_erosion_tau_apparent
 #orogenic_uplift_parameter *= 2.0
 #subduction_orogeny_smooth_coeff = 0.
@@ -378,7 +395,7 @@ runoff_west_coast_penetration_scale = 3.e6
 minimum_runoff = 0.1
 runoff_smoothing = 100.0
 
-exposed_basement_CO2uptake_coeff = 0.25 # Suchet 2003 combined shield,basalt,acid volc
+exposed_basement_or_CaCO3_CO2uptake_coeff = 0.25 # Suchet 2003 combined shield,basalt,acid volc
 sediment_CaCO3_CO2uptake_coeff = 1.6
 sediment_CaO_CO2uptake_coeff = 0.6
 
@@ -433,8 +450,7 @@ end
 #land_sediment_dissolution_rate_constants = [0.0, 0.01, 0.01] # per Myr
 #land_sediment_dissolution_2xCO2 = [0.0, 0.0, 0.0]
 #global_CaCO3_net_burial_flux = 1.e15 # today fluxes
-seafloor_base_diffcoeff = 3.e5 # m2 / yr
-
+seafloor_base_diffcoeff = 3.e9 # 1.e3 # m2 / yr
 
 # CaCO3 parameters
 global_CO2_degassing_rate = 7.5E12 # mol / yr
